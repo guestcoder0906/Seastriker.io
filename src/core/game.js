@@ -672,6 +672,10 @@ class NarwhaleGame {
 
 }
 
-window.addEventListener('load', () => {
+if (document.readyState === 'complete' || document.readyState === 'interactive') {
     new NarwhaleGame();
-});
+} else {
+    window.addEventListener('load', () => {
+        new NarwhaleGame();
+    });
+}
