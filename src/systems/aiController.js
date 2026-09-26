@@ -524,6 +524,8 @@ export class AIController {
             collisionResult = ai.creature.checkSharkCollisions(this.game.playerPresences);
         } else if (ai.creature.type === 'knifefish') {
             collisionResult = ai.creature.checkKnifeFishCollisions(this.game.playerPresences);
+        } else if (ai.creature.type === 'squid') {
+            collisionResult = this.checkSquidAICollisions(ai.creature, this.game.playerPresences);
         }
         
         if (collisionResult && typeof collisionResult === 'object') {
@@ -541,89 +543,52 @@ export class AIController {
                 return;
             }
 
+            const isLocalPlayer = targetId === this.game.room.clientId || (this.game.creature && targetId === this.game.creature.id);
             const isAITarget = targetId && targetId.startsWith('ai-');
             
-            if (collisionResult.type === 'tuskToTusk') {
-                if (!isAITarget) {
-                    if (this.game.room && typeof this.game.room.requestPresenceUpdate === 'function') {
-                        this.game.room.requestPresenceUpdate(targetId, {
-                            type: 'tuskCollision',
-                            fromAngle: ai.creature.rotationAngle,
-                            knockbackForce: collisionResult.knockbackForce
-                        });
+            if (isLocalPlayer) {
+                // Direct local damage to human player
+                if (collisionResult.type === 'tuskToTusk') {
+                    const knockbackAngle = ai.creature.rotationAngle;
+                    const force = collisionResult.knockbackForce || 5;
+                    if (this.game.creature && this.game.creature.velocity) {
+                        this.game.creature.velocity.x += Math.cos(knockbackAngle) * force;
+                        this.game.creature.velocity.y += Math.sin(knockbackAngle) * force;
                     }
                 } else {
-                    // AI to AI tusk collision - handle directly
-                    const targetAI = this.aiPlayers[targetId];
+                    const damage = Math.max(1, collisionResult.damage || 20);
+                    const killed = this.game.healthSystem.processDamage(
+                        collisionResult.type,
+                        damage,
+                        aiId
+                    );
+
+                    const knockbackAngle = ai.creature.rotationAngle;
+                    const force = collisionResult.knockbackForce || 5;
+                    if (this.game.creature && this.game.creature.velocity) {
+                        this.game.creature.velocity.x += Math.cos(knockbackAngle) * force;
+                        this.game.creature.velocity.y += Math.sin(knockbackAngle) * force;
+                    }
+
+                    if (killed) {
+                        ai.creature.kills++;
+                        const targetUpgrades = this.game.creature ? (this.game.creature.upgrades || {}) : {};
+                        this.game.aiUpgradeSystem.transferUpgradesFromKill(ai.creature, targetUpgrades);
+                        this.game.aiUpgradeSystem.checkAIUpgrades(ai.creature);
+                        this.aiPresences[aiId] = ai.creature.getPresenceData();
+                        this.game.playerPresences[aiId] = this.aiPresences[aiId];
+                    }
+                }
+            } else if (isAITarget) {
+                // AI to AI collision
+                const targetAI = this.aiPlayers[targetId];
+                if (collisionResult.type === 'tuskToTusk') {
                     if (targetAI) {
-                        // Apply knockback force to the other AI
                         const knockbackAngle = ai.creature.rotationAngle;
                         targetAI.creature.velocity.x += Math.cos(knockbackAngle) * collisionResult.knockbackForce;
                         targetAI.creature.velocity.y += Math.sin(knockbackAngle) * collisionResult.knockbackForce;
                     }
-                }
-            }
-            else if (collisionResult.type === 'lethal') {
-                // AI killed another player or AI
-                ai.creature.kills++;
-                
-                if (isAITarget) {
-                    // AI to AI lethal hit - handle directly
-                    const targetAI = this.aiPlayers[targetId];
-                    if (targetAI) {
-                        // Store upgrades before processing damage
-                        const targetUpgrades = {...targetAI.creature.upgrades};
-                        
-                        const killed = this.game.aiHealthSystem.processAIDamage(
-                            targetAI,
-                            'lethal',
-                            collisionResult.damage,
-                            aiId
-                        );
-                        
-                        if (killed) {
-                            // Use new upgrade system to transfer upgrades
-                            this.game.aiUpgradeSystem.transferUpgradesFromKill(
-                                ai.creature, 
-                                targetUpgrades
-                            );
-                        }
-                    }
                 } else {
-                    // Get upgrades from the human player
-                    const targetUpgrades = targetPresence?.upgrades || {};
-                    
-                    // Request the human player to update their presence
-                    if (this.game.room && typeof this.game.room.requestPresenceUpdate === 'function') {
-                        this.game.room.requestPresenceUpdate(targetId, {
-                            type: 'collision',
-                            killed: true,
-                            hitType: 'lethal',
-                            damageAmount: collisionResult.damage,
-                            segmentIndex: collisionResult.segment,
-                            attackerId: aiId
-                        });
-                    }
-                    
-                    // Apply any upgrades from the killed player using new upgrade system
-                    this.game.aiUpgradeSystem.transferUpgradesFromKill(
-                        ai.creature,
-                        targetUpgrades
-                    );
-                }
-                
-                // Check for new upgrades based on kill count using new upgrade system
-                this.game.aiUpgradeSystem.checkAIUpgrades(ai.creature);
-                
-                // Update AI presence with new kill count and upgrades
-                this.aiPresences[aiId] = ai.creature.getPresenceData();
-                this.game.playerPresences[aiId] = this.aiPresences[aiId];
-            }
-            else {
-                // Non-lethal hit
-                if (isAITarget) {
-                    // AI to AI non-lethal hit - handle directly
-                    const targetAI = this.aiPlayers[targetId];
                     if (targetAI) {
                         const targetUpgrades = {...targetAI.creature.upgrades};
                         const killed = this.game.aiHealthSystem.processAIDamage(
@@ -635,7 +600,7 @@ export class AIController {
                         if (killed) {
                             ai.creature.kills++;
                             this.game.aiUpgradeSystem.transferUpgradesFromKill(
-                                ai.creature,
+                                ai.creature, 
                                 targetUpgrades
                             );
                             this.game.aiUpgradeSystem.checkAIUpgrades(ai.creature);
@@ -643,23 +608,59 @@ export class AIController {
                             this.game.playerPresences[aiId] = this.aiPresences[aiId];
                         }
                     }
-                } else {
-                    // Non-lethal hit on human player
-                    if (this.game.room && typeof this.game.room.requestPresenceUpdate === 'function') {
+                }
+            } else {
+                // Remote human player in multiplayer: send network update request
+                if (this.game.room && typeof this.game.room.requestPresenceUpdate === 'function') {
+                    if (collisionResult.type === 'tuskToTusk') {
                         this.game.room.requestPresenceUpdate(targetId, {
-                            type: 'bodyHit',
+                            type: 'tuskCollision',
+                            fromAngle: ai.creature.rotationAngle,
+                            knockbackForce: collisionResult.knockbackForce
+                        });
+                    } else {
+                        this.game.room.requestPresenceUpdate(targetId, {
+                            type: collisionResult.type === 'lethal' ? 'collision' : 'bodyHit',
                             hitType: collisionResult.type,
                             damageAmount: collisionResult.damage,
                             knockbackAngle: ai.creature.rotationAngle,
-                            knockbackForce: 5
+                            knockbackForce: collisionResult.knockbackForce || 5,
+                            attackerId: aiId
                         });
                     }
                 }
             }
         }
         
-        // Also check segment collisions to prevent going through other narwhals
+        // Also check segment collisions to prevent going through other creatures
         this.game.narwhalCollisions.checkSegmentCollisions(ai.creature, this.game.playerPresences);
+    }
+
+    checkSquidAICollisions(squid, otherPresences) {
+        if (!squid || !squid.isAlive || !squid.segments || !otherPresences) return null;
+        const now = performance.now();
+        const head = squid.segments[0];
+        if (!head) return null;
+
+        for (const clientId in otherPresences) {
+            if (clientId === squid.id) continue;
+            const other = otherPresences[clientId];
+            if (!other || !other.isAlive || !other.segments || !other.segments[0]) continue;
+
+            const dist = Math.hypot(head.x - other.segments[0].x, head.y - other.segments[0].y);
+            const hitDistance = (CONFIG.SEGMENT_SIZE * 1.5) * (head.scale || 1.0);
+
+            if (dist < hitDistance) {
+                const damage = squid.isDashing ? 35 : (CONFIG.SQUID_TENTACLE_DAMAGE || 25);
+                return {
+                    clientId: clientId,
+                    type: squid.isDashing ? 'lethal' : 'headHit',
+                    damage: damage,
+                    knockbackForce: 4
+                };
+            }
+        }
+        return null;
     }
 
     findNearbyTargets(ai, aiId, range) {

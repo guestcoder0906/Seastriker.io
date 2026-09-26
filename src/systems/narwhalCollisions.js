@@ -14,6 +14,7 @@ export class NarwhalCollisions {
         for (const clientId in otherPresences) {
             // Skip self
             if (clientId === narwhal.id) continue;
+            if (this.game.creature && narwhal === this.game.creature && (clientId === this.game.room.clientId || clientId === this.game.creature.id)) continue;
             
             const otherNarwhal = otherPresences[clientId];
             
@@ -78,6 +79,7 @@ export class NarwhalCollisions {
         for (const clientId in otherPresences) {
             // Skip self
             if (clientId === narwhal.id) continue;
+            if (this.game.creature && narwhal === this.game.creature && (clientId === this.game.room.clientId || clientId === this.game.creature.id)) continue;
             
             // Check for cooldown on this specific collision pair
             const collisionPairId = `${narwhal.id}-${clientId}`;

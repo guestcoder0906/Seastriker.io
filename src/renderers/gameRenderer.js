@@ -124,11 +124,12 @@ export class GameRenderer {
             this.game.inkSystem.drawInkClouds(ctx);
         }
         
-        // Draw other players
+        // Draw other players (skip local player)
         for (const clientId in playerPresences) {
-            if (narwhal && clientId !== narwhal.id && playerPresences[clientId].isAlive) {
-                this.drawCreatureByType(ctx, playerPresences[clientId]);
-            } else if (!narwhal && playerPresences[clientId].isAlive) {
+            if (clientId === this.game.room?.clientId || (narwhal && clientId === narwhal.id)) {
+                continue;
+            }
+            if (playerPresences[clientId] && playerPresences[clientId].isAlive) {
                 this.drawCreatureByType(ctx, playerPresences[clientId]);
             }
         }

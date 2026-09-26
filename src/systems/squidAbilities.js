@@ -149,7 +149,8 @@ calculateTentacleHitbox(squid) {
         const tickInterval = 600; // Balanced interval between damage ticks
         
         // Apply damage and slow effect to trapped player
-        if (targetId === this.game.room.clientId) {
+        const isLocalTarget = targetId === this.game.room.clientId || (this.game.creature && targetId === this.game.creature.id);
+        if (isLocalTarget) {
             // Apply slow effect to local player using the new system
             if (this.game.octopusTentacleEffect) {
                 this.game.octopusTentacleEffect.applySlow(this.game.creature, squid.id);

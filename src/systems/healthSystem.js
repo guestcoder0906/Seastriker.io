@@ -1,107 +1,132 @@
 import { CONFIG } from '../core/config.js';
-import { CreatureFactory } from '../entities/creatureFactory.js';
 
 export class HealthSystem {
     constructor(game) {
         this.game = game;
+        this.lastDamageTime = 0;
     }
     
-    // Process health regeneration for the local narwhal
+    // Process health regeneration for the local creature
     updateHealth() {
-        let narwhal = this.game.creature;
-        if (!narwhal || !narwhal.isAlive || !this.game.gameActive) return; // Check gameActive state
+        const creature = this.game.creature;
+        if (!creature || !creature.isAlive || !this.game.gameActive) return;
         
-        if (narwhal.health < CONFIG.MAX_HEALTH) {
-            narwhal.health = Math.min(CONFIG.MAX_HEALTH, narwhal.health + CONFIG.HEALTH_REGEN_RATE);
+        // Only regenerate health after 3 seconds of taking no damage
+        const now = performance.now();
+        if (creature.health < CONFIG.MAX_HEALTH && (now - this.lastDamageTime > 3000)) {
+            const regenAmount = CONFIG.HEALTH_REGEN_RATE || 0.1;
+            creature.health = Math.min(CONFIG.MAX_HEALTH, creature.health + regenAmount);
             
-            // Update the presence with new health value
-            this.game.room.updatePresence({
-                health: narwhal.health
-            });
+            // Sync updated health
+            if (this.game.room) {
+                this.game.room.updatePresence({
+                    health: creature.health
+                });
+            }
         }
     }
     
-    // Process damage received from another player
+    // Process damage received from an AI, another player, or environment
     processDamage(damageType, damageAmount, attackerClientId, alreadyEvadeChecked = false) {
-        let narwhal = this.game.creature;
+        const creature = this.game.creature;
         
-        if (!narwhal || !narwhal.isAlive || !this.game.gameActive) return false; // Check gameActive state
+        if (!creature || !creature.isAlive || !this.game.gameActive) return false;
         
-        // Cannot take damage if hiding inside coral
-        if (narwhal.isHiddenInReef || (this.game.coralReefSystem && this.game.coralReefSystem.isCreatureProtectedInReef(narwhal))) {
+        // Protected if hiding inside coral reef
+        if (creature.isHiddenInReef || (this.game.coralReefSystem && this.game.coralReefSystem.isCreatureProtectedInReef(creature))) {
             return false;
         }
 
-        // While octopus is camouflaged, attacks/damage done to it only happen 50% of the time
-        if (!alreadyEvadeChecked && this.game.octopusAbilities && this.game.octopusAbilities.shouldEvadeAttack(narwhal)) {
+        // While octopus is camouflaged, 50% chance to evade
+        if (!alreadyEvadeChecked && this.game.octopusAbilities && this.game.octopusAbilities.shouldEvadeAttack(creature)) {
             return false;
         }
         
-        // Apply damage
-        narwhal.health -= damageAmount;
+        // Ensure damage is a valid positive number
+        const effectiveDamage = Math.max(1, typeof damageAmount === 'number' && !isNaN(damageAmount) ? damageAmount : 18);
         
-        // Check if narwhal is dead
-        if (narwhal.health <= 0) {
-            narwhal.health = 0;
-            narwhal.die();
+        const now = performance.now();
+        this.lastDamageTime = now;
+        creature.lastDamaged = now;
+        
+        // Decrease health
+        creature.health = Math.max(0, creature.health - effectiveDamage);
+        
+        // Check if dead
+        if (creature.health <= 0) {
+            creature.health = 0;
+            creature.die();
             
             // Clear any tentacle slow effect
-            if (narwhal._tentacleSlowed) {
-                delete narwhal._tentacleSlowed;
-                delete narwhal._originalTentacleSpeed;
+            if (creature._tentacleSlowed) {
+                delete creature._tentacleSlowed;
+                delete creature._originalTentacleSpeed;
             }
             
-            // Update presence to show we're dead
-            this.game.room.updatePresence({
-                ...narwhal.getPresenceData(),
-                health: 0,
-                isAlive: false
-            });
+            // Broadcast death to network
+            if (this.game.room) {
+                this.game.room.updatePresence({
+                    ...creature.getPresenceData(),
+                    health: 0,
+                    isAlive: false
+                });
+            }
             
-            // Let the game handle showing the death screen
-            return true; // Indicate that the player died
+            return true; // Player died
         } else {
-            // Just update the health
-            this.game.room.updatePresence({
-                health: narwhal.health
-            });
+            // Update presence with new health value
+            if (this.game.room) {
+                this.game.room.updatePresence({
+                    health: creature.health
+                });
+            }
             
-            return false; // Player didn't die
+            return false; // Still alive
         }
     }
     
-    // Draw health bar for a creature
-    drawHealthBar(ctx, narwhal) {
-        if (!narwhal || !narwhal.segments || narwhal.segments.length === 0) return;
-        const headSegment = narwhal.segments[0];
+    // Draw health bar for a creature (local or remote/AI)
+    drawHealthBar(ctx, creature) {
+        if (!creature || !creature.segments || creature.segments.length === 0) return;
+        const headSegment = creature.segments[0];
         const x = headSegment.x;
-        const y = headSegment.y - CONFIG.SEGMENT_SIZE * 2.5;
-        const width = 40;
-        const height = 5;
+        const y = headSegment.y - CONFIG.SEGMENT_SIZE * 2.3;
+        const width = 44;
+        const height = 6;
         
-        // Background (empty health)
-        ctx.fillStyle = 'rgba(0,0,0,0.5)';
-        ctx.fillRect(x - width/2, y, width, height);
+        const now = performance.now();
+        const isRecentlyDamaged = creature.lastDamaged && (now - creature.lastDamaged < 260);
         
-        // Health amount - safely clamp between 0 and 1
-        const healthVal = narwhal.health !== undefined ? narwhal.health : CONFIG.MAX_HEALTH;
-        const healthPercentage = Math.max(0, Math.min(1, healthVal / CONFIG.MAX_HEALTH));
-        let healthColor;
+        // Draw background container
+        ctx.save();
+        ctx.fillStyle = 'rgba(5, 10, 20, 0.75)';
+        ctx.fillRect(x - width / 2, y, width, height);
         
-        if (healthPercentage > 0.6) {
-            healthColor = 'lime';
-        } else if (healthPercentage > 0.3) {
-            healthColor = 'yellow';
-        } else {
-            healthColor = 'red';
+        // Health amount clamped [0, 1]
+        const maxHealth = CONFIG.MAX_HEALTH || 100;
+        const healthVal = typeof creature.health === 'number' ? creature.health : maxHealth;
+        const healthPercentage = Math.max(0, Math.min(1, healthVal / maxHealth));
+        
+        let healthColor = '#22c55e'; // Green
+        if (healthPercentage <= 0.3) {
+            healthColor = '#ef4444'; // Red
+        } else if (healthPercentage <= 0.6) {
+            healthColor = '#eab308'; // Amber yellow
         }
         
-        ctx.fillStyle = healthColor;
-        ctx.fillRect(x - width/2, y, width * healthPercentage, height);
+        // Flash white when hit
+        if (isRecentlyDamaged) {
+            healthColor = '#ffffff';
+        }
         
-        // Border
-        ctx.strokeStyle = 'white';
+        // Fill health bar
+        ctx.fillStyle = healthColor;
+        ctx.fillRect(x - width / 2 + 1, y + 1, Math.max(0, (width - 2) * healthPercentage), height - 2);
+        
+        // Border outline
+        ctx.strokeStyle = isRecentlyDamaged ? '#ff4444' : 'rgba(255, 255, 255, 0.85)';
         ctx.lineWidth = 1;
-        ctx.strokeRect(x - width/2, y, width, height);
+        ctx.strokeRect(x - width / 2, y, width, height);
+        ctx.restore();
     }
 }

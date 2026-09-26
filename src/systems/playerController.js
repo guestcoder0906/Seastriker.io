@@ -184,6 +184,9 @@ export class PlayerController {
         
         if (collisionResult) {
             const clientId = collisionResult.clientId;
+            if (clientId === this.game.room?.clientId || (this.game.creature && clientId === this.game.creature.id)) {
+                return;
+            }
             
             // Cannot attack creatures hiding inside coral reefs since they are protected
             const targetPresence = this.game.playerPresences[clientId];
@@ -300,6 +303,9 @@ export class PlayerController {
         
         if (collisionResult && typeof collisionResult === 'object') {
             const clientId = collisionResult.clientId;
+            if (clientId === this.game.room?.clientId || (this.game.creature && clientId === this.game.creature.id)) {
+                return;
+            }
             
             // Cannot attack creatures hiding inside coral reefs since they are protected
             const targetPresence = this.game.playerPresences[clientId];
@@ -434,6 +440,9 @@ export class PlayerController {
         
         if (collisionResult && typeof collisionResult === 'object') {
             const clientId = collisionResult.clientId;
+            if (clientId === this.game.room?.clientId || (this.game.creature && clientId === this.game.creature.id)) {
+                return;
+            }
             
             // Cannot attack creatures hiding inside coral reefs since they are protected
             const targetPresence = this.game.playerPresences[clientId];
@@ -539,6 +548,9 @@ export class PlayerController {
         
         if (collisionResult && typeof collisionResult === 'object') {
             const clientId = collisionResult.clientId;
+            if (clientId === this.game.room?.clientId || (this.game.creature && clientId === this.game.creature.id)) {
+                return;
+            }
             const targetPresence = this.game.playerPresences[clientId];
             if (targetPresence && (targetPresence.isHiddenInReef || (this.game.coralReefSystem && this.game.coralReefSystem.isCreatureProtectedInReef(targetPresence)))) {
                 return;

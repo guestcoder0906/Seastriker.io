@@ -44,6 +44,9 @@ import { WebsimSocket } from './websimSocket.js';
 
 class NarwhaleGame {
     constructor() {
+        if (typeof window !== 'undefined') {
+            window.game = this;
+        }
         this.canvas = document.getElementById('gameCanvas');
         this.ctx = this.canvas.getContext('2d');
         this.resizeCanvas();
@@ -138,9 +141,17 @@ class NarwhaleGame {
     spawnPlayer(creatureType) {
         const spawnPoint = this.gameInitializer.generateSpawnPoint();
         
-        const username = this.room.peers[this.room.clientId].username;
+        let username = "Player";
+        if (this.room && this.room.peers && this.room.peers[this.room.clientId]) {
+            username = this.room.peers[this.room.clientId].username;
+        } else {
+            try {
+                username = localStorage.getItem('username') || "Player";
+            } catch (e) {}
+        }
         
         this.creature = this.gameInitializer.createCreature(creatureType, spawnPoint.x, spawnPoint.y, username);
+        this.creature.id = this.room.clientId;
         this.narwhalSpeed.initializeNarwhal(this.creature);
         
         this.room.updatePresence(this.creature.getPresenceData());
@@ -335,9 +346,12 @@ class NarwhaleGame {
             isAlive: false
         });
         
-        if (this.room.peers[this.room.clientId]?.username) {
+        const username = (this.room.peers && this.room.peers[this.room.clientId]?.username) || 
+                         (typeof localStorage !== 'undefined' && localStorage.getItem('username')) || 
+                         "Player";
+        if (username) {
             this.globalLeaderboardManager.submitScore(
-                this.room.peers[this.room.clientId].username,
+                username,
                 this.playerStats.getStats().bestKills,
                 this.playerStats.getStats().totalKills
             );
@@ -452,14 +466,14 @@ class NarwhaleGame {
         if (this.creature) {
             players.push({
                 id: this.room.clientId,
-                name: this.room.peers[this.room.clientId]?.username || "You",
+                name: this.creature.name || this.room.peers[this.room.clientId]?.username || "You",
                 kills: this.creature.kills,
                 isLocal: true
             });
         }
         
         for (const clientId in this.playerPresences) {
-            if (clientId !== this.room.clientId) {
+            if (clientId !== this.room.clientId && (!this.creature || clientId !== this.creature.id)) {
                 const presence = this.playerPresences[clientId];
                 
                 const name = clientId.startsWith('ai-') ? 

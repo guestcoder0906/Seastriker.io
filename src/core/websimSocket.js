@@ -135,10 +135,30 @@ export class WebsimSocket {
                 this.socket.on('init', (data) => {
                     this.isServerConnected = true;
                     clearTimeout(timeoutId);
-                    if (data.id) this.clientId = data.id;
+                    if (data.id) {
+                        this.clientId = data.id;
+                        if (typeof window !== 'undefined' && window.game && window.game.creature) {
+                            window.game.creature.id = this.clientId;
+                        }
+                    }
                     if (data.roomState) this.roomState = data.roomState;
                     if (data.peers) this.peers = data.peers;
                     completeInit();
+                });
+
+                this.socket.on('takeDamage', (data) => {
+                    if (typeof window !== 'undefined' && window.game && window.game.healthSystem) {
+                        window.game.healthSystem.processDamage(
+                            data.hitType || 'bodyHit',
+                            data.damage || 20,
+                            data.attackerId
+                        );
+                        if (data.knockbackAngle !== undefined && window.game.creature && window.game.creature.velocity) {
+                            const force = data.knockbackForce || 5;
+                            window.game.creature.velocity.x += Math.cos(data.knockbackAngle) * force;
+                            window.game.creature.velocity.y += Math.sin(data.knockbackAngle) * force;
+                        }
+                    }
                 });
 
                 this.socket.on('peerJoined', (peer) => {
