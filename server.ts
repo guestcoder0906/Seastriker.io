@@ -128,6 +128,35 @@ async function startServer() {
     res.json({ success: true, leaderboard: formatted });
   });
 
+  // Check username uniqueness
+  app.post("/api/check-username", (req, res) => {
+    const { username, socketId } = req.body;
+    const clean = String(username || "").trim().substring(0, 16);
+    if (!clean || clean.length < 2) {
+      res.json({ available: false, message: "Username must be at least 2 characters." });
+      return;
+    }
+
+    const taken = Object.values(peers).some(
+      (p) => p.id !== socketId && p.username.toLowerCase() === clean.toLowerCase()
+    );
+
+    if (taken) {
+      let suggestion = clean + "_" + Math.floor(10 + Math.random() * 90);
+      while (Object.values(peers).some(p => p.username.toLowerCase() === suggestion.toLowerCase())) {
+        suggestion = clean + "_" + Math.floor(100 + Math.random() * 900);
+      }
+      res.json({
+        available: false,
+        message: `Username "${clean}" is already active in this ocean!`,
+        suggestion
+      });
+      return;
+    }
+
+    res.json({ available: true, username: clean });
+  });
+
   app.get("/api/status", (req, res) => {
     res.json({
       online: true,
@@ -188,6 +217,31 @@ async function startServer() {
         ...data,
         attackerId: socket.id
       });
+    });
+
+    // Set unique username
+    socket.on("setUsername", (data) => {
+      const raw = data && data.username ? data.username : "";
+      let clean = String(raw).trim().substring(0, 16);
+      if (!clean) clean = "Player_" + Math.floor(100 + Math.random() * 900);
+
+      // Verify uniqueness against other peers
+      const taken = Object.values(peers).some(
+        (p) => p.id !== socket.id && p.username.toLowerCase() === clean.toLowerCase()
+      );
+      if (taken) {
+        let suffix = Math.floor(10 + Math.random() * 90);
+        clean = `${clean.substring(0, 13)}_${suffix}`;
+      }
+
+      peers[socket.id] = { id: socket.id, username: clean };
+      if (presences[socket.id]) {
+        presences[socket.id].name = clean;
+      }
+
+      socket.emit("usernameConfirmed", { username: clean });
+      io.emit("peerJoined", peers[socket.id]);
+      socket.broadcast.emit("presence", presences);
     });
 
     // Submit global score

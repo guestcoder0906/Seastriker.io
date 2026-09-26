@@ -138,20 +138,25 @@ class NarwhaleGame {
         this.startScreen.show();
     }
     
-    spawnPlayer(creatureType) {
+    spawnPlayer(creatureType, overrideUsername) {
         const spawnPoint = this.gameInitializer.generateSpawnPoint();
         
-        let username = "Player";
-        if (this.room && this.room.peers && this.room.peers[this.room.clientId]) {
-            username = this.room.peers[this.room.clientId].username;
-        } else {
-            try {
-                username = localStorage.getItem('username') || "Player";
-            } catch (e) {}
+        let username = overrideUsername || 
+                       (this.room && this.room.peers && this.room.peers[this.room.clientId]?.username) || 
+                       (typeof localStorage !== 'undefined' && localStorage.getItem('username')) || 
+                       "Player";
+        
+        try {
+            localStorage.setItem('username', username);
+        } catch (e) {}
+
+        if (this.room && this.room.peers) {
+            this.room.peers[this.room.clientId] = { id: this.room.clientId, username };
         }
         
         this.creature = this.gameInitializer.createCreature(creatureType, spawnPoint.x, spawnPoint.y, username);
         this.creature.id = this.room.clientId;
+        this.creature.name = username;
         this.narwhalSpeed.initializeNarwhal(this.creature);
         
         this.room.updatePresence(this.creature.getPresenceData());
@@ -168,7 +173,11 @@ class NarwhaleGame {
     }
 
     handlePresenceUpdate(presences) {
-        this.playerPresences = presences;
+        this.playerPresences = { ...presences };
+        
+        if (this.gameActive && this.creature && this.creature.isAlive) {
+            this.playerPresences[this.room.clientId] = this.creature.getPresenceData();
+        }
         
         for (const aiId in this.aiController.aiPlayers) {
             if (this.aiController.aiPresences[aiId]) {
@@ -264,6 +273,9 @@ class NarwhaleGame {
             );
             
             this.updateCamera();
+            
+            // Keep local player presence current for AI targeting and collision detection
+            this.playerPresences[this.room.clientId] = this.creature.getPresenceData();
             
             this.playerController.checkCollisions();
             

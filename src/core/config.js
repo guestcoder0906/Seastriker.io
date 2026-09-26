@@ -32,8 +32,8 @@ export const CONFIG = {
     // Combat settings
     KILL_VELOCITY_THRESHOLD: 7,
     KNOCKBACK_FORCE: 0.5,
-    MINIMUM_IMPACT_VELOCITY: 3, // Minimum velocity for tusk damage
-    COLLISION_COOLDOWN: 1000,   // 1000ms (1 second) cooldown before same creatures can damage each other again
+    MINIMUM_IMPACT_VELOCITY: 0.5, // Minimum velocity for tusk damage (lowered so all combat strikes register)
+    COLLISION_COOLDOWN: 800,   // 800ms cooldown before same creatures can damage each other again
 
     // Segment collision settings 
     SEGMENT_COLLISION_FORCE: 0.15, // Force applied when segments collide

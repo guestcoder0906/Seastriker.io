@@ -150,15 +150,16 @@ export class StatsScreen {
             const row = document.createElement('tr');
             
             // Highlight current user
-            const currentUsername = this.game.room.peers[this.game.room.clientId]?.username;
-            const isCurrentUser = currentUsername && entry.username === currentUsername;
+            const currentUsername = (this.game.room && this.game.room.peers && this.game.room.peers[this.game.room.clientId]?.username) || 
+                                    (typeof localStorage !== 'undefined' && localStorage.getItem('username'));
+            const isCurrentUser = currentUsername && entry.username && entry.username.toLowerCase() === currentUsername.toLowerCase();
             if (isCurrentUser) {
                 row.className = 'current-user';
             }
             
             row.innerHTML = `
                 <td>${index + 1}</td>
-                <td>${entry.username || 'Unknown'}</td>
+                <td>${entry.username || 'Unknown'}${isCurrentUser ? ' <strong style="color: #38bdf8;">(You)</strong>' : ''}</td>
                 <td>${entry.score}</td>
             `;
             

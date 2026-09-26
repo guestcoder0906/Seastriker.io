@@ -511,6 +511,11 @@ export class AIController {
         // Skip if AI is not alive
         if (!ai || !ai.creature || !ai.creature.isAlive) return;
         
+        // Ensure local player presence is registered for AI collisions
+        if (this.game.creature && this.game.creature.isAlive && this.game.gameActive) {
+            this.game.playerPresences[this.game.room.clientId] = this.game.creature.getPresenceData();
+        }
+        
         // Check collisions based on AI creature type
         let collisionResult = null;
         if (ai.creature.type === 'narwhal') {

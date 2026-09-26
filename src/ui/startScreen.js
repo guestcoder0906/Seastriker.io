@@ -7,7 +7,18 @@ export class StartScreen {
         this.game = game;
         this.visible = true;
         this.creatureSelectionManager = new CreatureSelectionManager(game);
+        this.validationTimeout = null;
+        this.isValidUsername = true;
         this.setupScreenElements();
+    }
+
+    getRandomOceanName() {
+        const prefixes = ["Apex", "Shadow", "Kraken", "Abyssal", "Tidal", "Frost", "Viper", "Echo", "Coral", "Phantom", "Rogue", "Swift", "Hydro", "Neon"];
+        const suffixes = ["Striker", "Hunter", "Fin", "Fang", "Shark", "Whale", "Sniper", "Reaper", "Blade", "Tide", "Surge", "Ghost"];
+        const p = prefixes[Math.floor(Math.random() * prefixes.length)];
+        const s = suffixes[Math.floor(Math.random() * suffixes.length)];
+        const num = Math.floor(10 + Math.random() * 89);
+        return `${p}${s}_${num}`;
     }
 
     setupScreenElements() {
@@ -21,6 +32,68 @@ export class StartScreen {
         header.textContent = 'SeaStriker.io';
         this.container.appendChild(header);
 
+        // Create username input section
+        const usernameContainer = document.createElement('div');
+        usernameContainer.className = 'username-input-container';
+
+        const usernameLabel = document.createElement('label');
+        usernameLabel.setAttribute('for', 'player-username-input');
+        usernameLabel.textContent = 'Choose Your Ocean Nickname (Unique)';
+        usernameContainer.appendChild(usernameLabel);
+
+        const inputRow = document.createElement('div');
+        inputRow.className = 'username-input-row';
+
+        const input = document.createElement('input');
+        input.id = 'player-username-input';
+        input.type = 'text';
+        input.maxLength = 16;
+        input.placeholder = 'Enter unique nickname...';
+        input.autocomplete = 'off';
+        input.spellcheck = false;
+
+        let initialName = '';
+        try {
+            initialName = localStorage.getItem('username') || '';
+        } catch (e) {}
+        if (!initialName) {
+            initialName = this.getRandomOceanName();
+            try {
+                localStorage.setItem('username', initialName);
+            } catch (e) {}
+        }
+        input.value = initialName;
+        this.usernameInput = input;
+
+        const diceBtn = document.createElement('button');
+        diceBtn.id = 'random-name-btn';
+        diceBtn.type = 'button';
+        diceBtn.title = 'Generate Random Name';
+        diceBtn.textContent = '🎲';
+        diceBtn.addEventListener('click', () => {
+            this.usernameInput.value = this.getRandomOceanName();
+            this.validateUsername(this.usernameInput.value);
+        });
+
+        inputRow.appendChild(input);
+        inputRow.appendChild(diceBtn);
+        usernameContainer.appendChild(inputRow);
+
+        const feedback = document.createElement('div');
+        feedback.className = 'username-feedback valid';
+        feedback.textContent = '✓ Ready to swim';
+        usernameContainer.appendChild(feedback);
+        this.usernameFeedback = feedback;
+
+        input.addEventListener('input', () => {
+            clearTimeout(this.validationTimeout);
+            this.validationTimeout = setTimeout(() => {
+                this.validateUsername(input.value);
+            }, 250);
+        });
+
+        this.container.appendChild(usernameContainer);
+
         // Create creature selection section
         const selectionContainer = document.createElement('div');
         selectionContainer.className = 'selection-container';
@@ -29,7 +102,7 @@ export class StartScreen {
         selectionTitle.textContent = 'Choose Your Creature:';
         selectionContainer.appendChild(selectionTitle);
 
-        // Add creature options - all creature skins are available directly as creatures for free
+        // Add creature options
         const creatures = [
             { id: 'random', label: 'Random' },
             { id: 'narwhal', label: 'Narwhal' },
@@ -128,95 +201,86 @@ export class StartScreen {
         instructionsTitle.textContent = 'How To Play:';
         instructionsContainer.appendChild(instructionsTitle);
         
-        // Create creature-specific instructions
-        const creatureInstructions = document.createElement('div');
-        creatureInstructions.className = 'creature-instructions';
-        
         // Common controls
         const commonControls = document.createElement('div');
         commonControls.innerHTML = `
             <h3>Common Controls:</h3>
             <ul>
                 <li>Move: Follow Mouse / Joystick</li>
-                <li>Ram / Dash: Mouse Click / Tap RAM Button (requires &gt; ½ stamina, uses ½ stamina)</li>
-                <li>Fast Swim (Sprint): Hold Shift / Tap SPRINT Button (smoothly drains stamina; ram requires &gt; ½ stamina)</li>
-                <li>Dodge: Spacebar / Dodge Button (burst maneuver)</li>
-                <li>Goal: Get the most kills on the leaderboard!</li>
+                <li>Ram / Dash: Mouse Click / Tap RAM Button</li>
+                <li>Fast Swim (Sprint): Hold Shift / Tap SPRINT Button</li>
+                <li>Dodge: Spacebar / Dodge Button</li>
+                <li>Goal: Eliminate other creatures and climb the leaderboard!</li>
             </ul>
         `;
-        creatureInstructions.appendChild(commonControls);
-        
-        // Specific controls
-        const specificControls = {
-            narwhal: `
-                <h3>Narwhal:</h3>
-                <ul>
-                    <li>Stab other creatures with your extended tusk</li>
-                    <li>Press Spacebar/Dodge Button to dodge backward</li>
-                    <li>High speed ram/dash attacks for lethal strikes</li>
-                </ul>
-            `,
-            dolphin: `
-                <h3>Bottlenose Dolphin:</h3>
-                <ul>
-                    <li>Bottlenose with a distinct nose and rounded melon head (not diamond)</li>
-                    <li>Mouse Click / Tap RAM: Burst forward with a powerful snout ram!</li>
-                    <li>Hold Shift to fast swim sprint with hydrodynamic agility</li>
-                    <li>Whip a fast turn while sprinting to swing your Tail Snap attack!</li>
-                </ul>
-            `,
-            shark: `
-                <h3>Shark:</h3>
-                <ul>
-                    <li>Ram into others with your head</li>
-                    <li>Faster movement than other creatures</li>
-                    <li>Powerful ram attack for instant kills</li>
-                </ul>
-            `,
-            squid: `
-                <h3>Squid:</h3>
-                <ul>
-                    <li>Press Q/Ink Button to release ink cloud</li>
-                    <li>Trap enemies in your tentacles for damage</li>
-                    <li>Press Spacebar/Dodge Button for extended dodge</li>
-                </ul>
-            `,
-            knifefish: `
-                <h3>Knife Fish:</h3>
-                <ul>
-                    <li>Can see camouflaged creatures with full transparency</li>
-                    <li>Can hide in coral reefs like squids</li>
-                    <li>Damage increases 2x when boosting</li>
-                    <li>Dodge has shorter cooldown (3s)</li>
-                </ul>
-            `
-        };
-        
-        for (const type in specificControls) {
-            const controlsDiv = document.createElement('div');
-            controlsDiv.className = `specific-controls ${type}-controls`;
-            controlsDiv.innerHTML = specificControls[type];
-            creatureInstructions.appendChild(controlsDiv);
-        }
-        
-        instructionsContainer.appendChild(creatureInstructions);
+        instructionsContainer.appendChild(commonControls);
         this.container.appendChild(instructionsContainer);
 
-        // Add to game container
-        document.getElementById('game-container').appendChild(this.container);
+        // Add to document
+        document.body.appendChild(this.container);
+        
+        // Run initial check
+        this.validateUsername(input.value);
     }
-    
-    // Update creature names based on selected skins
+
+    async validateUsername(name) {
+        const clean = String(name || '').trim();
+        if (clean.length < 2) {
+            this.isValidUsername = false;
+            this.usernameFeedback.className = 'username-feedback invalid';
+            this.usernameFeedback.textContent = 'Username must be at least 2 characters';
+            if (this.usernameInput) {
+                this.usernameInput.classList.remove('valid');
+                this.usernameInput.classList.add('invalid');
+            }
+            return false;
+        }
+
+        try {
+            const socketId = this.game.room && this.game.room.clientId ? this.game.room.clientId : null;
+            const res = await fetch('/api/check-username', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username: clean, socketId })
+            });
+
+            if (res.ok) {
+                const data = await res.json();
+                if (!data.available) {
+                    this.isValidUsername = false;
+                    this.usernameFeedback.className = 'username-feedback warning';
+                    this.usernameFeedback.textContent = data.message || 'Username taken by active player';
+                    if (this.usernameInput) {
+                        this.usernameInput.classList.remove('valid');
+                        this.usernameInput.classList.add('invalid');
+                    }
+                    return false;
+                }
+            }
+        } catch (e) {
+            // Offline fallback
+        }
+
+        this.isValidUsername = true;
+        this.usernameFeedback.className = 'username-feedback valid';
+        this.usernameFeedback.textContent = '✓ Unique ocean name available!';
+        if (this.usernameInput) {
+            this.usernameInput.classList.remove('invalid');
+            this.usernameInput.classList.add('valid');
+        }
+        return true;
+    }
+
     updateCreatureNames() {
         const labels = {
-            random: 'Random',
-            narwhal: 'Narwhal',
-            dolphin: 'Dolphin',
-            shark: 'Shark',
-            hammerhead: 'Hammerhead Shark',
-            squid: 'Squid',
-            octopus: 'Octopus',
-            knifefish: 'Knife Fish'
+            'narwhal': 'Narwhal',
+            'dolphin': 'Dolphin',
+            'shark': 'Shark',
+            'hammerhead': 'Hammerhead Shark',
+            'squid': 'Squid',
+            'octopus': 'Octopus',
+            'knifefish': 'Knife Fish',
+            'random': 'Random'
         };
         
         const options = this.container.querySelectorAll('.creature-option');
@@ -232,7 +296,7 @@ export class StartScreen {
     show() {
         this.visible = true;
         this.container.style.display = 'flex';
-        this.updateCreatureNames(); // Update creature names when showing the screen
+        this.updateCreatureNames();
     }
     
     hide() {
@@ -240,10 +304,34 @@ export class StartScreen {
         this.container.style.display = 'none';
     }
     
-    startGame() {
+    async startGame() {
+        let cleanName = (this.usernameInput ? this.usernameInput.value : '').trim().substring(0, 16);
+        if (!cleanName || cleanName.length < 2) {
+            cleanName = this.getRandomOceanName();
+            if (this.usernameInput) this.usernameInput.value = cleanName;
+        }
+
+        // Save username locally
+        try {
+            localStorage.setItem('username', cleanName);
+        } catch (e) {}
+
+        // Sync with room peers
+        if (this.game.room) {
+            if (this.game.room.peers && this.game.room.clientId) {
+                this.game.room.peers[this.game.room.clientId] = {
+                    id: this.game.room.clientId,
+                    username: cleanName
+                };
+            }
+            if (this.game.room.socket && this.game.room.isServerConnected) {
+                this.game.room.socket.emit('setUsername', { username: cleanName });
+            }
+        }
+
         this.hide();
-        // Use the creature type from the manager when spawning
-        this.game.spawnPlayer(this.creatureSelectionManager.getSelectedCreature());
+        // Spawn player with chosen username
+        this.game.spawnPlayer(this.creatureSelectionManager.getSelectedCreature(), cleanName);
     }
     
     showDeathScreen(kills) {
@@ -274,6 +362,14 @@ export class StartScreen {
         if (statsButton) {
             statsButton.style.display = 'block';
         }
+
+        // Refresh username in input
+        try {
+            const currentName = localStorage.getItem('username');
+            if (currentName && this.usernameInput) {
+                this.usernameInput.value = currentName;
+            }
+        } catch (e) {}
         
         this.show();
     }

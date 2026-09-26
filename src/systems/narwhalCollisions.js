@@ -98,30 +98,36 @@ export class NarwhalCollisions {
                 continue;
             }
             
-            // First check tusk-to-tusk collision
-            const otherTuskBase = {
-                x: otherNarwhal.segments[0].x,
-                y: otherNarwhal.segments[0].y
-            };
-            
-            const otherTuskTip = {
-                x: otherTuskBase.x + Math.cos(otherNarwhal.segments[0].angle) * CONFIG.TUSK_LENGTH,
-                y: otherTuskBase.y + Math.sin(otherNarwhal.segments[0].angle) * CONFIG.TUSK_LENGTH
-            };
-            
-            // Check tusk-to-tusk collision
-            if (this.lineIntersection(
-                tuskBase.x, tuskBase.y, tuskTip.x, tuskTip.y,
-                otherTuskBase.x, otherTuskBase.y, otherTuskTip.x, otherTuskTip.y
-            )) {
-                // Record the collision time to prevent rapid repeated hits
-                this.recentCollisions[collisionPairId] = performance.now();
-                
-                return {
-                    clientId: clientId,
-                    type: 'tuskToTusk',
-                    knockbackForce: velocityMagnitude * 1.5
+            // First check tusk-to-tusk collision only if other creature is also a narwhal
+            if (otherNarwhal.type === 'narwhal') {
+                const otherTuskAngle = typeof otherNarwhal.rotationAngle === 'number' 
+                    ? otherNarwhal.rotationAngle 
+                    : (otherNarwhal.segments[0]?.angle || 0);
+
+                const otherTuskBase = {
+                    x: otherNarwhal.segments[0].x,
+                    y: otherNarwhal.segments[0].y
                 };
+                
+                const otherTuskTip = {
+                    x: otherTuskBase.x + Math.cos(otherTuskAngle) * CONFIG.TUSK_LENGTH,
+                    y: otherTuskBase.y + Math.sin(otherTuskAngle) * CONFIG.TUSK_LENGTH
+                };
+                
+                // Check tusk-to-tusk collision
+                if (this.lineIntersection(
+                    tuskBase.x, tuskBase.y, tuskTip.x, tuskTip.y,
+                    otherTuskBase.x, otherTuskBase.y, otherTuskTip.x, otherTuskTip.y
+                )) {
+                    // Record the collision time to prevent rapid repeated hits
+                    this.recentCollisions[collisionPairId] = performance.now();
+                    
+                    return {
+                        clientId: clientId,
+                        type: 'tuskToTusk',
+                        knockbackForce: Math.max(4, velocityMagnitude * 1.5)
+                    };
+                }
             }
             
             // Then check tusk-to-segment collision
