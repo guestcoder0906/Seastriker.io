@@ -1,0 +1,6 @@
+{
+  "name": "SeaStriker.io",
+  "description": "Multiplayer ocean survival arena featuring narwhals, sharks, squids, and knife fish.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

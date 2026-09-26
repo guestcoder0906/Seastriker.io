@@ -1,0 +1,40 @@
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>SeaStriker.io</title>
+    <meta name="description" content="Multiplayer ocean survival arena featuring narwhals, sharks, squids, and knife fish.">
+    <link rel="stylesheet" href="/src/styles.css">
+    <script type="module" src="/src/core/game.js"></script>
+</head>
+<body>
+    <div id="game-container">
+        <canvas id="gameCanvas"></canvas>
+        <div id="leaderboard">
+            <h2>Leaderboard</h2>
+            <div id="players-list"></div>
+        </div>
+        <div id="controls-info">
+            <p>Move: Follow Mouse</p>
+            <p>Ram / Dash: Click (Stamina &gt; ½)</p>
+            <p>Fast Swim: Hold Shift</p>
+            <p>Dodge: Spacebar (Not Sharks)</p>
+            <p>Ink / Camo: Q / C</p>
+        </div>
+        
+        <!-- Mobile controls -->
+        <div id="mobile-controls">
+            <div id="joystick-area">
+                <div id="joystick"></div>
+            </div>
+            <div id="dash-button" class="action-button">RAM</div>
+            <div id="dodge-button" class="action-button">DODGE</div>
+            <div id="fastswim-button" class="action-button">SPRINT</div>
+            <div id="ink-button" class="action-button">INK</div>
+            <div id="camo-button" class="action-button">CAMO</div>
+        </div>
+    </div>
+</body>
+</html>
