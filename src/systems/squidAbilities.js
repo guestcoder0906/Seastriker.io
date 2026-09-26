@@ -143,8 +143,10 @@ calculateTentacleHitbox(squid) {
             damageAmount *= squid.tentacleDamageModifier;
         }
         if (squid.skinId === 'octopus') {
-            damageAmount = CONFIG.OCTOPUS_HEAD_DAMAGE || 26;
+            damageAmount = CONFIG.OCTOPUS_HEAD_DAMAGE || 14;
         }
+        
+        const tickInterval = 650; // Increased interval between damage ticks so attacks are less overwhelming
         
         // Apply damage and slow effect to trapped player
         if (targetId === this.game.room.clientId) {
@@ -153,10 +155,10 @@ calculateTentacleHitbox(squid) {
                 this.game.octopusTentacleEffect.applySlow(this.game.creature, squid.id);
             }
             
-            // Apply damage every 500ms
+            // Apply damage every 650ms
             const now = performance.now();
             if (!this.tentacleHitboxes[targetId].lastDamageTime || 
-                now - this.tentacleHitboxes[targetId].lastDamageTime > 500) {
+                now - this.tentacleHitboxes[targetId].lastDamageTime > tickInterval) {
                 
                 this.game.healthSystem.processDamage("tentacleHit", damageAmount, squid.id);
                 this.tentacleHitboxes[targetId].lastDamageTime = now;
@@ -168,10 +170,10 @@ calculateTentacleHitbox(squid) {
                 this.game.octopusTentacleEffect.applySlow(aiCreature, squid.id);
             }
             
-            // Apply damage every 500ms
+            // Apply damage every 650ms
             const now = performance.now();
             if (!this.tentacleHitboxes[targetId].lastDamageTime || 
-                now - this.tentacleHitboxes[targetId].lastDamageTime > 500) {
+                now - this.tentacleHitboxes[targetId].lastDamageTime > tickInterval) {
                 
                 this.game.aiHealthSystem.processAIDamage(
                     this.game.aiController.aiPlayers[targetId],
@@ -185,13 +187,13 @@ calculateTentacleHitbox(squid) {
             // Human player - send damage and slow effect request
             const now = performance.now();
             if (!this.tentacleHitboxes[targetId].lastDamageTime || 
-                now - this.tentacleHitboxes[targetId].lastDamageTime > 500) {
+                now - this.tentacleHitboxes[targetId].lastDamageTime > tickInterval) {
                 
                 this.game.room.requestPresenceUpdate(targetId, {
                     type: 'tentacleHit',
                     hitType: 'tentacleHit',
                     damageAmount: damageAmount,
-                    speedReduction: 0.5
+                    speedReduction: 0.4
                 });
                 this.tentacleHitboxes[targetId].lastDamageTime = now;
             }

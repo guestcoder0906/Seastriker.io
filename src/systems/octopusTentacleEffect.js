@@ -15,7 +15,7 @@ export class OctopusTentacleEffect {
         if (!targetCreature._tentacleSlowed) {
             // Store original speed before applying slow
             targetCreature._originalTentacleSpeed = targetCreature.speed;
-            targetCreature.speed = targetCreature._originalTentacleSpeed * 0.5;
+            targetCreature.speed = targetCreature._originalTentacleSpeed * 0.65;
             targetCreature._tentacleSlowed = true;
             
             // Track this player as caught
