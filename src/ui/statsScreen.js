@@ -127,7 +127,7 @@ export class StatsScreen {
         if (leaderboard.length === 0) {
             const noData = document.createElement('div');
             noData.className = 'no-leaderboard-data';
-            noData.textContent = 'No real player scores recorded yet. Play a game to claim the #1 spot!';
+            noData.textContent = 'No scores recorded yet.';
             this.leaderboardContent.appendChild(noData);
             return;
         }
