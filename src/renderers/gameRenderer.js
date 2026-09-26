@@ -79,6 +79,7 @@ export class GameRenderer {
         ctx.fillStyle = CONFIG.WATER_COLOR;
         ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
         
+        let currentScale = 1;
         // Apply camera transform with improved scale for mobile
         if (this.game.isMobile) {
             // Center of screen
@@ -93,6 +94,7 @@ export class GameRenderer {
             if (smallerDimension < 400) {
                 mobileScale = CONFIG.MOBILE_CAMERA_SCALE * 0.8;
             }
+            currentScale = mobileScale;
             
             // Apply scale transformation around center
             ctx.translate(centerX, centerY);
@@ -103,8 +105,8 @@ export class GameRenderer {
         // Apply camera transform
         ctx.translate(-camera.x, -camera.y);
         
-        // Draw ocean background
-        this.drawOceanBackground(ctx, camera);
+        // Draw ocean background with full scale awareness so it never cuts off
+        this.drawOceanBackground(ctx, camera, currentScale);
         
         // Draw bubbles
         this.drawBubbles(ctx, camera, bubbles);
@@ -200,23 +202,31 @@ export class GameRenderer {
         return canvas;
     }
 
-    drawOceanBackground(ctx, camera) {
-        // Calculate the visible area dimensions considering mobile scaling
-        const viewportWidth = ctx.canvas.width / (this.game.isMobile ? CONFIG.MOBILE_CAMERA_SCALE : 1);
-        const viewportHeight = ctx.canvas.height / (this.game.isMobile ? CONFIG.MOBILE_CAMERA_SCALE : 1);
-        
-        // Calculate the visible source rectangle
-        const sourceX = Math.max(0, Math.min(camera.x, CONFIG.WORLD_WIDTH - viewportWidth));
-        const sourceY = Math.max(0, Math.min(camera.y, CONFIG.WORLD_HEIGHT - viewportHeight));
-        const sourceWidth = Math.min(CONFIG.WORLD_WIDTH - sourceX, viewportWidth);
-        const sourceHeight = Math.min(CONFIG.WORLD_HEIGHT - sourceY, viewportHeight);
-        
-        // Draw the visible portion of the background
-        ctx.drawImage(
-            this.oceanBackground,
-            sourceX, sourceY, sourceWidth, sourceHeight,
-            sourceX, sourceY, sourceWidth, sourceHeight
-        );
+    drawOceanBackground(ctx, camera, currentScale = 1) {
+        // Calculate the visible world boundaries based on canvas dimensions, camera position, and scale
+        const canvasW = ctx.canvas.width;
+        const canvasH = ctx.canvas.height;
+        const halfW = canvasW / 2;
+        const halfH = canvasH / 2;
+
+        const visibleMinX = camera.x - halfW * (1 / currentScale - 1);
+        const visibleMinY = camera.y - halfH * (1 / currentScale - 1);
+        const visibleMaxX = visibleMinX + canvasW / currentScale;
+        const visibleMaxY = visibleMinY + canvasH / currentScale;
+
+        // 1. Draw boundless deep abyss background around and beyond world borders to prevent any cutoff
+        const margin = 2000;
+        const fillX = Math.min(visibleMinX - margin, -margin);
+        const fillY = Math.min(visibleMinY - margin, -margin);
+        const fillW = Math.max(visibleMaxX + margin, CONFIG.WORLD_WIDTH + margin) - fillX;
+        const fillH = Math.max(visibleMaxY + margin, CONFIG.WORLD_HEIGHT + margin) - fillY;
+
+        ctx.fillStyle = '#061320'; // Seamless deep ocean abyss beyond map edges
+        ctx.fillRect(fillX, fillY, fillW, fillH);
+
+        // 2. Draw the entire pre-rendered ocean water background across the full playable arena
+        // Drawing the full world canvas directly eliminates all slicing, viewport clamping, and edge cutoffs
+        ctx.drawImage(this.oceanBackground, 0, 0, CONFIG.WORLD_WIDTH, CONFIG.WORLD_HEIGHT);
     }
 
     drawBubbles(ctx, camera, bubbles) {
@@ -669,11 +679,22 @@ export class GameRenderer {
     }
     
     isInViewport(x, y, width, height, camera) {
+        let scale = 1;
+        if (this.game.isMobile) {
+            const smallerDimension = Math.min(window.innerWidth, window.innerHeight);
+            scale = smallerDimension < 400 ? CONFIG.MOBILE_CAMERA_SCALE * 0.8 : CONFIG.MOBILE_CAMERA_SCALE;
+        }
+        const halfW = (this.game.canvas.width / 2);
+        const halfH = (this.game.canvas.height / 2);
+        const minX = camera.x - halfW * (1 / scale - 1) - 150;
+        const minY = camera.y - halfH * (1 / scale - 1) - 150;
+        const maxX = minX + (this.game.canvas.width / scale) + 300;
+        const maxY = minY + (this.game.canvas.height / scale) + 300;
         return (
-            x + width >= camera.x &&
-            x <= camera.x + this.game.canvas.width &&
-            y + height >= camera.y &&
-            y <= camera.y + this.game.canvas.height
+            x + width >= minX &&
+            x <= maxX &&
+            y + height >= minY &&
+            y <= maxY
         );
     }
 }

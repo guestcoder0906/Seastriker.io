@@ -380,18 +380,33 @@ class NarwhaleGame {
     }
 
     updateCamera() {
+        let scale = 1;
+        if (this.isMobile) {
+            const smallerDimension = Math.min(window.innerWidth, window.innerHeight);
+            scale = smallerDimension < 400 ? CONFIG.MOBILE_CAMERA_SCALE * 0.8 : CONFIG.MOBILE_CAMERA_SCALE;
+            this.camera.scale = scale;
+        }
+        
         const targetX = this.creature.segments[0].x - this.canvas.width / 2;
         const targetY = this.creature.segments[0].y - this.canvas.height / 2;
         
         this.camera.x += (targetX - this.camera.x) * 0.1;
         this.camera.y += (targetY - this.camera.y) * 0.1;
         
-        if (this.isMobile) {
-            this.camera.scale = CONFIG.MOBILE_CAMERA_SCALE;
-        }
+        // Smooth bounds clamping accounting for screen scale so camera does not jump or clip
+        const halfW = (this.canvas.width / 2);
+        const halfH = (this.canvas.height / 2);
+        const minCamX = halfW * (1 / scale - 1);
+        const maxCamX = CONFIG.WORLD_WIDTH - (this.canvas.width / scale) + halfW * (1 / scale - 1);
+        const minCamY = halfH * (1 / scale - 1);
+        const maxCamY = CONFIG.WORLD_HEIGHT - (this.canvas.height / scale) + halfH * (1 / scale - 1);
         
-        this.camera.x = Math.max(0, Math.min(this.camera.x, CONFIG.WORLD_WIDTH - this.canvas.width));
-        this.camera.y = Math.max(0, Math.min(this.camera.y, CONFIG.WORLD_HEIGHT - this.canvas.height));
+        if (maxCamX >= minCamX) {
+            this.camera.x = Math.max(minCamX, Math.min(this.camera.x, maxCamX));
+        }
+        if (maxCamY >= minCamY) {
+            this.camera.y = Math.max(minCamY, Math.min(this.camera.y, maxCamY));
+        }
     }
 
     generateBubbles(count) {
@@ -566,31 +581,6 @@ class NarwhaleGame {
         const dodgeButton = document.getElementById('dodge-button');
         const inkButton = document.getElementById('ink-button');
         
-        const positionMobileControls = () => {
-            const displayWidth = window.innerWidth;
-            const displayHeight = window.innerHeight;
-            
-            if (displayWidth < 400) {
-                joystickArea.style.left = '10px';
-                joystickArea.style.bottom = '10px';
-                
-                dashButton.style.right = '20px';
-                dashButton.style.bottom = '90px';
-                
-                dodgeButton.style.right = '20px';
-                dodgeButton.style.bottom = '160px';
-            } else {
-                dashButton.style.right = '40px';
-                dashButton.style.bottom = '80px';
-                
-                dodgeButton.style.right = '120px';
-                dodgeButton.style.bottom = '140px';
-            }
-        };
-        
-        positionMobileControls();
-        window.addEventListener('resize', positionMobileControls);
-        
         joystickArea.addEventListener('touchstart', (e) => {
             const touch = e.touches[0];
             const rect = joystickArea.getBoundingClientRect();
@@ -630,8 +620,9 @@ class NarwhaleGame {
         joystickArea.addEventListener('touchend', (e) => {
             this.mobileControls.joystick.active = false;
             
-            joystick.style.left = '30px';
-            joystick.style.top = '30px';
+            const rect = joystickArea.getBoundingClientRect();
+            joystick.style.left = (rect.width / 2 - joystick.offsetWidth / 2) + 'px';
+            joystick.style.top = (rect.height / 2 - joystick.offsetHeight / 2) + 'px';
             e.preventDefault();
         });
         

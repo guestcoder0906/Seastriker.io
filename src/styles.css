@@ -2,17 +2,21 @@ body {
     margin: 0;
     padding: 0;
     overflow: hidden;
-    background-color: #F0F0F0;
+    background-color: #061320;
     font-family: Arial, sans-serif;
     width: 100%;
     height: 100%;
+    height: 100dvh;
     position: fixed; /* Prevent scroll on mobile */
 }
 
 #game-container {
     position: relative;
     width: 100vw;
+    width: 100dvw;
     height: 100vh;
+    height: 100dvh;
+    min-height: -webkit-fill-available;
     overflow: hidden; /* Prevent scroll */
     touch-action: none; /* Prevent browser handling of touch events */
 }
@@ -482,104 +486,121 @@ body {
     }
 }
 
-/* Mobile controls - Original styles preserved */
+/* Mobile controls */
 #mobile-controls {
-    position: absolute;
-    bottom: 0;
+    position: fixed;
+    top: 0;
     left: 0;
-    right: 0;
+    width: 100%;
+    height: 100%;
+    height: 100dvh;
     display: none; 
     z-index: 100;
-    /* Prevent content from being cut off on mobile */
-    padding: 0 env(safe-area-inset-right, 0) env(safe-area-inset-bottom, 0) env(safe-area-inset-left, 0);
+    pointer-events: none; /* Let canvas capture taps in non-button areas */
+}
+
+#mobile-controls > * {
+    pointer-events: auto; /* Buttons and joystick receive touch events */
 }
 
 #joystick-area {
     position: absolute;
-    bottom: max(env(safe-area-inset-bottom, 20px), 20px);
-    left: max(env(safe-area-inset-left, 20px), 20px);
+    bottom: calc(30px + max(env(safe-area-inset-bottom, 0px), 16px));
+    left: calc(20px + max(env(safe-area-inset-left, 0px), 14px));
     width: 120px;
     height: 120px;
     border-radius: 60px;
-    background-color: rgba(255, 255, 255, 0.3);
+    background-color: rgba(255, 255, 255, 0.28);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
     touch-action: none;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
+    border: 2px solid rgba(255, 255, 255, 0.35);
 }
 
 #joystick {
     position: absolute;
-    width: 60px;
-    height: 60px;
-    border-radius: 30px;
-    background-color: rgba(255, 255, 255, 0.6);
-    top: 30px;
-    left: 30px;
+    width: 56px;
+    height: 56px;
+    border-radius: 28px;
+    background-color: rgba(255, 255, 255, 0.85);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    top: 32px;
+    left: 32px;
     touch-action: none;
 }
 
 .action-button {
     position: absolute;
-    width: 70px;
-    height: 70px;
-    border-radius: 35px;
-    background-color: rgba(255, 255, 255, 0.6);
-    color: black;
-    font-weight: bold;
+    width: 66px;
+    height: 66px;
+    border-radius: 33px;
+    background-color: rgba(255, 255, 255, 0.7);
+    color: #0f172a;
+    font-weight: 800;
+    font-size: 13px;
+    letter-spacing: 0.5px;
     display: flex;
     align-items: center;
     justify-content: center;
     user-select: none;
+    -webkit-user-select: none;
     touch-action: none;
     text-align: center; 
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
+    border: 2px solid rgba(255, 255, 255, 0.5);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    transition: transform 0.08s ease, background-color 0.1s ease;
 }
 
+.action-button:active {
+    transform: scale(0.92);
+}
+
+/* Primary actions: RAM & SPRINT - Elevated above iPhone home indicator and Safari navigation bar */
 #dash-button {
-    bottom: max(env(safe-area-inset-bottom, 80px), 80px);
-    right: max(env(safe-area-inset-right, 40px), 40px);
-    transform-origin: center;
-    transform: translate(0, 0); /* Ensure it doesn't get cut off */
+    bottom: calc(32px + max(env(safe-area-inset-bottom, 0px), 18px));
+    right: calc(20px + max(env(safe-area-inset-right, 0px), 14px));
+    background-color: rgba(255, 255, 255, 0.88);
+    color: #0f172a;
 }
 
 #fastswim-button {
-    bottom: max(env(safe-area-inset-bottom, 80px), 80px);
-    right: max(env(safe-area-inset-right, 120px), 120px);
-    transform-origin: center;
-    transform: translate(0, 0);
-    background-color: rgba(40, 180, 220, 0.7);
-    color: white;
+    bottom: calc(32px + max(env(safe-area-inset-bottom, 0px), 18px));
+    right: calc(96px + max(env(safe-area-inset-right, 0px), 14px));
+    background-color: rgba(14, 165, 233, 0.88);
+    color: #ffffff;
+    border-color: rgba(186, 230, 253, 0.6);
 }
 
+/* Secondary action: DODGE */
 #dodge-button {
-    bottom: max(env(safe-area-inset-bottom, 160px), 160px);
-    right: max(env(safe-area-inset-right, 40px), 40px);
-    transform-origin: center;
-    transform: translate(0, 0); /* Ensure it doesn't get cut off */
+    bottom: calc(110px + max(env(safe-area-inset-bottom, 0px), 18px));
+    right: calc(20px + max(env(safe-area-inset-right, 0px), 14px));
+    background-color: rgba(245, 158, 11, 0.88);
+    color: #ffffff;
+    border-color: rgba(254, 243, 199, 0.6);
 }
 
+/* Special abilities: INK & CAMO */
 #ink-button {
-    bottom: max(env(safe-area-inset-bottom, 240px), 240px);
-    right: max(env(safe-area-inset-right, 40px), 40px);
-    transform-origin: center;
-    transform: translate(0, 0); /* Ensure it doesn't get cut off */
-    background-color: rgba(100, 100, 255, 0.6);
-    display: flex; 
-    justify-content: center; 
-    align-items: center; 
-    text-align: center;
+    bottom: calc(188px + max(env(safe-area-inset-bottom, 0px), 18px));
+    right: calc(20px + max(env(safe-area-inset-right, 0px), 14px));
+    background-color: rgba(99, 102, 241, 0.88);
+    color: #ffffff;
+    border-color: rgba(224, 231, 255, 0.6);
 }
 
 #camo-button {
-    bottom: max(env(safe-area-inset-bottom, 240px), 240px);
-    right: max(env(safe-area-inset-right, 120px), 120px);
-    transform-origin: center;
-    transform: translate(0, 0); /* Ensure it doesn't get cut off */
-    background-color: rgba(30, 100, 30, 0.6);
-    display: flex; 
-    justify-content: center; 
-    align-items: center; 
-    text-align: center;
+    bottom: calc(188px + max(env(safe-area-inset-bottom, 0px), 18px));
+    right: calc(96px + max(env(safe-area-inset-right, 0px), 14px));
+    background-color: rgba(16, 185, 129, 0.88);
+    color: #ffffff;
+    border-color: rgba(209, 250, 229, 0.6);
 }
 
-@media (max-width: 768px) {
+@media (max-width: 900px), (hover: none) and (pointer: coarse) {
     #mobile-controls {
         display: block;
     }
@@ -587,70 +608,106 @@ body {
     #controls-info {
         display: none;
     }
-    
-    /* Ensure buttons are in different positions */
-    #dash-button {
-        bottom: max(env(safe-area-inset-bottom, 80px), 80px);
-        right: max(env(safe-area-inset-right, 40px), 40px);
-    }
-    
-    #dodge-button {
-        bottom: max(env(safe-area-inset-bottom, 160px), 160px);
-        right: max(env(safe-area-inset-right, 40px), 40px);
-    }
 }
 
-@media (max-width: 400px) {
+/* Phone screens in portrait (iPhone SE, 12, 13, 14, 15, 16, etc.) */
+@media (max-width: 480px) {
     #joystick-area {
-        bottom: env(safe-area-inset-bottom, 10px);
-        left: env(safe-area-inset-left, 10px);
-        width: 100px;
-        height: 100px;
+        width: 108px;
+        height: 108px;
+        border-radius: 54px;
+        bottom: calc(30px + max(env(safe-area-inset-bottom, 0px), 20px));
+        left: calc(16px + max(env(safe-area-inset-left, 0px), 12px));
     }
     
     #joystick {
-        width: 50px;
-        height: 50px;
-        top: 25px;
-        left: 25px;
+        width: 48px;
+        height: 48px;
+        border-radius: 24px;
+        top: 30px;
+        left: 30px;
     }
     
     .action-button {
-        width: 60px;
-        height: 60px;
+        width: 62px;
+        height: 62px;
+        border-radius: 31px;
+        font-size: 12px;
     }
     
     #dash-button {
-        bottom: env(safe-area-inset-bottom, 90px);
-        right: env(safe-area-inset-right, 20px);
+        bottom: calc(32px + max(env(safe-area-inset-bottom, 0px), 22px));
+        right: calc(16px + max(env(safe-area-inset-right, 0px), 12px));
     }
     
     #fastswim-button {
-        bottom: env(safe-area-inset-bottom, 90px);
-        right: env(safe-area-inset-right, 90px);
+        bottom: calc(32px + max(env(safe-area-inset-bottom, 0px), 22px));
+        right: calc(88px + max(env(safe-area-inset-right, 0px), 12px));
     }
     
     #dodge-button {
-        bottom: env(safe-area-inset-bottom, 160px);
-        right: env(safe-area-inset-right, 20px);
+        bottom: calc(106px + max(env(safe-area-inset-bottom, 0px), 22px));
+        right: calc(16px + max(env(safe-area-inset-right, 0px), 12px));
     }
     
     #ink-button {
-        bottom: env(safe-area-inset-bottom, 230px);
-        right: env(safe-area-inset-right, 20px);
+        bottom: calc(180px + max(env(safe-area-inset-bottom, 0px), 22px));
+        right: calc(16px + max(env(safe-area-inset-right, 0px), 12px));
     }
     
     #camo-button {
-        bottom: env(safe-area-inset-bottom, 230px);
-        right: env(safe-area-inset-right, 100px);
+        bottom: calc(180px + max(env(safe-area-inset-bottom, 0px), 22px));
+        right: calc(88px + max(env(safe-area-inset-right, 0px), 12px));
     }
 }
 
-/* Fix for safe areas on modern mobile devices */
-@supports (padding: max(0px)) {
-    #mobile-controls {
-        padding-bottom: env(safe-area-inset-bottom, 0);
-        padding-left: env(safe-area-inset-left, 0);
-        padding-right: env(safe-area-inset-right, 0);
+/* Compact layout for mobile phones held in landscape */
+@media (max-height: 500px) {
+    #joystick-area {
+        width: 96px;
+        height: 96px;
+        border-radius: 48px;
+        bottom: calc(16px + max(env(safe-area-inset-bottom, 0px), 10px));
+        left: calc(20px + max(env(safe-area-inset-left, 0px), 16px));
+    }
+
+    #joystick {
+        width: 44px;
+        height: 44px;
+        border-radius: 22px;
+        top: 26px;
+        left: 26px;
+    }
+
+    .action-button {
+        width: 54px;
+        height: 54px;
+        border-radius: 27px;
+        font-size: 11px;
+    }
+
+    #dash-button {
+        bottom: calc(16px + max(env(safe-area-inset-bottom, 0px), 10px));
+        right: calc(16px + max(env(safe-area-inset-right, 0px), 16px));
+    }
+
+    #fastswim-button {
+        bottom: calc(16px + max(env(safe-area-inset-bottom, 0px), 10px));
+        right: calc(78px + max(env(safe-area-inset-right, 0px), 16px));
+    }
+
+    #dodge-button {
+        bottom: calc(78px + max(env(safe-area-inset-bottom, 0px), 10px));
+        right: calc(16px + max(env(safe-area-inset-right, 0px), 16px));
+    }
+
+    #ink-button {
+        bottom: calc(78px + max(env(safe-area-inset-bottom, 0px), 10px));
+        right: calc(78px + max(env(safe-area-inset-right, 0px), 16px));
+    }
+
+    #camo-button {
+        bottom: calc(78px + max(env(safe-area-inset-bottom, 0px), 10px));
+        right: calc(140px + max(env(safe-area-inset-right, 0px), 16px));
     }
 }
