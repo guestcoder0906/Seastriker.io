@@ -1,24 +1,8 @@
 {
   "bestKills": {
-    "ApexPredator": 24,
-    "KrakenKing": 19,
-    "AbyssalGhost": 16,
-    "ViperFish": 13,
-    "TsunamiRider": 11,
-    "ShadowFin": 9,
-    "CoralSniper": 7,
-    "DeepBlue": 5,
-    "TestPlayer": 12
+    "Chloe": 8
   },
   "totalKills": {
-    "ApexPredator": 142,
-    "KrakenKing": 118,
-    "AbyssalGhost": 85,
-    "ShadowFin": 64,
-    "ViperFish": 58,
-    "TsunamiRider": 45,
-    "CoralSniper": 37,
-    "DeepBlue": 29,
-    "TestPlayer": 30
+    "Chloe": 15
   }
 }

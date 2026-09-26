@@ -12,42 +12,57 @@ interface LeaderboardData {
 
 const LEADERBOARD_FILE = path.join(process.cwd(), "data", "leaderboard.json");
 
+const FAKE_PLACEHOLDER_PLAYERS = new Set([
+  "apexpredator",
+  "krakenking",
+  "abyssalghost",
+  "viperfish",
+  "tsunamirider",
+  "shadowfin",
+  "coralsniper",
+  "deepblue",
+  "testplayer"
+]);
+
+function filterFakePlayers(data: LeaderboardData): LeaderboardData {
+  const cleanBest: Record<string, number> = {};
+  const cleanTotal: Record<string, number> = {};
+
+  for (const [name, score] of Object.entries(data.bestKills || {})) {
+    if (!FAKE_PLACEHOLDER_PLAYERS.has(name.toLowerCase().trim())) {
+      cleanBest[name] = score;
+    }
+  }
+
+  for (const [name, score] of Object.entries(data.totalKills || {})) {
+    if (!FAKE_PLACEHOLDER_PLAYERS.has(name.toLowerCase().trim())) {
+      cleanTotal[name] = score;
+    }
+  }
+
+  return { bestKills: cleanBest, totalKills: cleanTotal };
+}
+
 function loadLeaderboard(): LeaderboardData {
   try {
     if (fs.existsSync(LEADERBOARD_FILE)) {
       const raw = fs.readFileSync(LEADERBOARD_FILE, "utf-8");
       const parsed = JSON.parse(raw);
       if (parsed && typeof parsed === "object") {
-        return {
+        const cleaned = filterFakePlayers({
           bestKills: parsed.bestKills || {},
           totalKills: parsed.totalKills || {}
-        };
+        });
+        saveLeaderboard(cleaned);
+        return cleaned;
       }
     }
   } catch (err) {
     console.error("[Server] Error loading leaderboard file:", err);
   }
   return {
-    bestKills: {
-      ApexPredator: 24,
-      KrakenKing: 19,
-      AbyssalGhost: 16,
-      ViperFish: 13,
-      TsunamiRider: 11,
-      ShadowFin: 9,
-      CoralSniper: 7,
-      DeepBlue: 5
-    },
-    totalKills: {
-      ApexPredator: 142,
-      KrakenKing: 118,
-      AbyssalGhost: 85,
-      ShadowFin: 64,
-      ViperFish: 58,
-      TsunamiRider: 45,
-      CoralSniper: 37,
-      DeepBlue: 29
-    }
+    bestKills: {},
+    totalKills: {}
   };
 }
 

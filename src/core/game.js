@@ -486,18 +486,20 @@ class NarwhaleGame {
         
         for (const clientId in this.playerPresences) {
             if (clientId !== this.room.clientId && (!this.creature || clientId !== this.creature.id)) {
-                const presence = this.playerPresences[clientId];
+                // Skip placeholder fake / AI bot players so ONLY real players appear in the leaderboard
+                if (clientId.startsWith('ai-')) {
+                    continue;
+                }
                 
-                const name = clientId.startsWith('ai-') ? 
-                             (presence.name || "AI Player") : 
-                             (this.room.peers[clientId]?.username || "Unknown");
+                const presence = this.playerPresences[clientId];
+                const name = this.room.peers[clientId]?.username || "Unknown";
                 
                 players.push({
                     id: clientId,
                     name: name,
                     kills: presence.kills || 0,
                     isLocal: false,
-                    isAI: clientId.startsWith('ai-')
+                    isAI: false
                 });
             }
         }

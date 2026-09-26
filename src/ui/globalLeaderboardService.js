@@ -67,34 +67,28 @@ export class GlobalLeaderboardService {
             }
         } catch (e) {}
         
-        // 4. Fallback defaults if offline
+        // 4. Empty fallback if offline
         const fallback = {
-            bestKills: [
-                { username: "ApexPredator", score: 24 },
-                { username: "KrakenKing", score: 19 },
-                { username: "AbyssalGhost", score: 16 },
-                { username: "ViperFish", score: 13 },
-                { username: "TsunamiRider", score: 11 },
-                { username: "ShadowFin", score: 9 },
-                { username: "CoralSniper", score: 7 },
-                { username: "DeepBlue", score: 5 }
-            ],
-            totalKills: [
-                { username: "ApexPredator", score: 142 },
-                { username: "KrakenKing", score: 118 },
-                { username: "AbyssalGhost", score: 85 },
-                { username: "ShadowFin", score: 64 },
-                { username: "ViperFish", score: 58 },
-                { username: "TsunamiRider", score: 45 },
-                { username: "CoralSniper", score: 37 },
-                { username: "DeepBlue", score: 29 }
-            ]
+            bestKills: [],
+            totalKills: []
         };
         this.leaderboardCache = fallback;
         return fallback;
     }
     
     _formatLeaderboardData(leaderboardData) {
+        const fakeNames = new Set([
+            "apexpredator",
+            "krakenking",
+            "abyssalghost",
+            "viperfish",
+            "tsunamirider",
+            "shadowfin",
+            "coralsniper",
+            "deepblue",
+            "testplayer"
+        ]);
+
         const formattedData = {
             bestKills: [],
             totalKills: []
@@ -102,6 +96,7 @@ export class GlobalLeaderboardService {
         
         if (leaderboardData.bestKills) {
             for (const username in leaderboardData.bestKills) {
+                if (fakeNames.has(username.toLowerCase().trim())) continue;
                 formattedData.bestKills.push({
                     username: username,
                     score: Number(leaderboardData.bestKills[username]) || 0
@@ -112,6 +107,7 @@ export class GlobalLeaderboardService {
         
         if (leaderboardData.totalKills) {
             for (const username in leaderboardData.totalKills) {
+                if (fakeNames.has(username.toLowerCase().trim())) continue;
                 formattedData.totalKills.push({
                     username: username,
                     score: Number(leaderboardData.totalKills[username]) || 0
