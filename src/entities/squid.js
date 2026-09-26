@@ -10,7 +10,7 @@ export class Squid extends Creature {
         this.dashCooldown = 0;
         this.dodgeCooldown = 0;
         this.initializeSegments();
-        this.speed = CONFIG.BASE_SPEED * 0.9; // Slightly slower than narwhal
+        this.speed = CONFIG.BASE_SPEED * 0.95; // Responsive swim speed
         // Add ink ability
         this.inkReady = true;
         this.inkCooldown = 0;
@@ -178,9 +178,14 @@ export class Squid extends Creature {
         const dy = targetY - this.segments[0].y;
         const desiredAngle = Math.atan2(dy, dx);
 
-        // Smooth rotation
-        this.rotationAngle = this.lerpAngle(this.rotationAngle, desiredAngle, 0.08);
-        this.movementAngle = this.lerpAngle(this.movementAngle, this.rotationAngle, 0.05);
+        // Smooth rotation - significantly more responsive steering
+        const isOctopus = this.skinId === 'octopus';
+        const steerSpeed = isOctopus ? 0.16 : 0.14; // Snappy turning response towards mouse/joystick
+        this.rotationAngle = this.lerpAngle(this.rotationAngle, desiredAngle, steerSpeed);
+
+        const angleDiff = this.rotationAngle - this.movementAngle;
+        const moveLerp = Math.abs(angleDiff) > Math.PI / 2 ? 0.14 : 0.09;
+        this.movementAngle = this.lerpAngle(this.movementAngle, this.rotationAngle, moveLerp);
 
         // Check for dash - squids can also dash
         if (mousePressed && canBurst && !this.isDashing && this.dashCooldown <= 0) {
@@ -188,9 +193,10 @@ export class Squid extends Creature {
             this.stamina = Math.max(0, this.stamina - burstCost);
             this.dashCooldown = CONFIG.RAM_COOLDOWN || CONFIG.DASH_COOLDOWN || 30;
             
-            // Apply acceleration for squid dash
-            this.velocity.x = this.velocity.x * 0.7 + Math.cos(this.movementAngle) * this.speed * CONFIG.DASH_MULTIPLIER * 0.3;
-            this.velocity.y = this.velocity.y * 0.7 + Math.sin(this.movementAngle) * this.speed * CONFIG.DASH_MULTIPLIER * 0.3;
+            // Apply acceleration for squid dash directly towards aiming direction
+            const dashAngle = this.rotationAngle;
+            this.velocity.x = this.velocity.x * 0.6 + Math.cos(dashAngle) * this.speed * CONFIG.DASH_MULTIPLIER * 0.4;
+            this.velocity.y = this.velocity.y * 0.6 + Math.sin(dashAngle) * this.speed * CONFIG.DASH_MULTIPLIER * 0.4;
             
             setTimeout(() => {
                 this.isDashing = false;
@@ -229,8 +235,8 @@ export class Squid extends Creature {
         
         // Only apply normal movement if not dodging
         if (!this.isDodging) {
-            this.velocity.x = this.velocity.x * 0.85 + moveX * 0.15;
-            this.velocity.y = this.velocity.y * 0.85 + moveY * 0.15;
+            this.velocity.x = this.velocity.x * 0.80 + moveX * 0.20;
+            this.velocity.y = this.velocity.y * 0.80 + moveY * 0.20;
         } else {
             this.velocity.x *= 0.98;
             this.velocity.y *= 0.98;

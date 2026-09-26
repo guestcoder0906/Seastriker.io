@@ -143,10 +143,10 @@ calculateTentacleHitbox(squid) {
             damageAmount *= squid.tentacleDamageModifier;
         }
         if (squid.skinId === 'octopus') {
-            damageAmount = CONFIG.OCTOPUS_HEAD_DAMAGE || 14;
+            damageAmount = CONFIG.OCTOPUS_HEAD_DAMAGE || 20;
         }
         
-        const tickInterval = 650; // Increased interval between damage ticks so attacks are less overwhelming
+        const tickInterval = 600; // Balanced interval between damage ticks
         
         // Apply damage and slow effect to trapped player
         if (targetId === this.game.room.clientId) {
