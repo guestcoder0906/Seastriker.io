@@ -218,6 +218,17 @@ export class AIController {
     }
 
     updateAIDecision(ai, aiId) {
+        // Blinded by ink cloud: AI is disoriented, loses target, and cannot chase
+        if (ai.creature.isInked) {
+            ai.state = 'exploring';
+            ai.target = null;
+            ai.mousePressed = false;
+            if (!ai.targetX || Math.random() < 0.05) {
+                this.setRandomExplorationTarget(ai);
+            }
+            return;
+        }
+
         // Only make new decisions when cooldown is over
         if (this.decisionCooldowns[aiId].stateChange <= 0) {
             // Change state with some probability - more aggressive now

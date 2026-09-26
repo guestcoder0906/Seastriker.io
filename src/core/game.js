@@ -113,9 +113,7 @@ class NarwhaleGame {
         this.knifeFishAbilities = new KnifeFishAbilities(this);
         this.knifeFishDodgeHandler = new KnifeFishDodgeHandler(this);
         
-        if (this.isMobile) {
-            this.mobileControlsManager = new MobileControlsManager(this);
-        }
+        this.mobileControlsManager = new MobileControlsManager(this);
         
         this.initialize();
     }
@@ -151,7 +149,7 @@ class NarwhaleGame {
         
         this.gameActive = true;
         
-        if (this.isMobile && this.mobileControlsManager) {
+        if (this.mobileControlsManager) {
             this.mobileControlsManager.updateControlsVisibility();
         }
         
@@ -261,7 +259,11 @@ class NarwhaleGame {
             this.room.updatePresence(this.creature.getPresenceData());
             
             if (this.creature.type === 'squid') {
+                const wasReady = this.creature.inkReady;
                 this.squidAbilities.updateInkStamina(this.creature, deltaTime);
+                if (this.mobileControlsManager && wasReady !== this.creature.inkReady) {
+                    this.mobileControlsManager.updateControlsVisibility();
+                }
                 this.squidAbilities.checkTentacleHitboxes(this.creature);
             }
             if (this.creature.type === 'squid' && this.creature.skinId === 'octopus') {

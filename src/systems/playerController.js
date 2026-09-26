@@ -137,6 +137,21 @@ export class PlayerController {
                 delete this.game.creature._originalTentacleSpeed;
             }
         }
+        else if (updateRequest.type === 'spawnInkCloud' && updateRequest.cloud) {
+            if (this.game.inkSystem) {
+                this.game.inkSystem.addRemoteInkCloud(updateRequest.cloud);
+            }
+        }
+        else if (updateRequest.type === 'inkEffect') {
+            if (this.game.creature && this.game.inkSystem) {
+                this.game.inkSystem.applyInkEffect(this.game.creature, this.game.room.clientId);
+                setTimeout(() => {
+                    if (this.game.creature && this.game.inkSystem) {
+                        this.game.inkSystem.removeInkEffect(this.game.creature, this.game.room.clientId);
+                    }
+                }, updateRequest.duration || 4000);
+            }
+        }
     }
 
     checkCollisions() {

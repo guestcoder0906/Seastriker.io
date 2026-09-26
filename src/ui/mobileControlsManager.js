@@ -14,27 +14,39 @@ export class MobileControlsManager {
         if (this.inkButton) this.inkButton.style.display = 'none';
         if (this.camoButton) this.camoButton.style.display = 'none';
         
-        // Setup event listeners if buttons exist
+        // Setup event listeners supporting touch, pointer, and click
         if (this.inkButton) {
-            this.inkButton.addEventListener('touchstart', (e) => {
+            const triggerInk = (e) => {
+                if (e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                }
                 if (this.game.creature && 
                     this.game.creature.type === 'squid' && 
                     this.game.creature.skinId !== 'octopus' &&
                     this.game.inkSystem) {
                     this.game.inkSystem.tryActivateInk();
-                    e.preventDefault();
+                    this.updateControlsVisibility();
                 }
-            });
+            };
+            
+            this.inkButton.addEventListener('pointerdown', triggerInk);
+            this.inkButton.addEventListener('touchstart', triggerInk);
+            this.inkButton.addEventListener('click', triggerInk);
         }
         
         if (this.camoButton) {
-            this.camoButton.addEventListener('touchstart', (e) => {
+            const triggerCamo = (e) => {
+                if (e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                }
                 if (this.game.creature && 
                     this.game.creature.type === 'squid' && 
                     this.game.creature.skinId === 'octopus' &&
                     this.game.octopusAbilities) {
-                    this.game.octopusAbilities.activateCamouflage(this.game.creature);
-                    if (this.game.room) {
+                    const activated = this.game.octopusAbilities.activateCamouflage(this.game.creature);
+                    if (activated && this.game.room) {
                         this.game.room.updatePresence({
                             isCamouflaged: true,
                             camouflageReady: false,
@@ -42,9 +54,13 @@ export class MobileControlsManager {
                             camouflageTimer: 0
                         });
                     }
-                    e.preventDefault();
+                    this.updateControlsVisibility();
                 }
-            });
+            };
+            
+            this.camoButton.addEventListener('pointerdown', triggerCamo);
+            this.camoButton.addEventListener('touchstart', triggerCamo);
+            this.camoButton.addEventListener('click', triggerCamo);
         }
     }
     
@@ -54,21 +70,25 @@ export class MobileControlsManager {
         // Update dash/ram button text
         const dashButton = document.getElementById('dash-button');
         if (dashButton) {
-            dashButton.textContent = (this.game.creature.type === 'dolphin' || this.game.creature.type === 'shark') ? 'RAM' : 'RAM';
+            dashButton.textContent = 'RAM';
         }
 
-        // Show/hide ink button based on creature type
+        // Show/hide ink button based on creature type (flex keeps circular layout)
         if (this.inkButton) {
-            this.inkButton.style.display = 
-                (this.game.creature.type === 'squid' && 
-                 this.game.creature.skinId !== 'octopus') ? 'block' : 'none';
+            const isSquid = this.game.creature.type === 'squid' && this.game.creature.skinId !== 'octopus';
+            this.inkButton.style.display = isSquid ? 'flex' : 'none';
+            if (isSquid) {
+                this.inkButton.style.opacity = this.game.creature.inkReady ? '1' : '0.5';
+            }
         }
         
         // Show/hide camo button based on creature type and skin
         if (this.camoButton) {
-            this.camoButton.style.display = 
-                (this.game.creature.type === 'squid' && 
-                 this.game.creature.skinId === 'octopus') ? 'block' : 'none';
+            const isOctopus = this.game.creature.type === 'squid' && this.game.creature.skinId === 'octopus';
+            this.camoButton.style.display = isOctopus ? 'flex' : 'none';
+            if (isOctopus) {
+                this.camoButton.style.opacity = this.game.creature.camouflageReady ? '1' : '0.5';
+            }
         }
     }
 }

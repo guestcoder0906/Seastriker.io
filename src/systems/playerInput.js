@@ -29,13 +29,19 @@ export class PlayerInput {
             this.keys[event.key] = true;
             
             // Activate camouflage on C key press for octopus
-            if (event.key === 'c' || event.key === 'C') {
+            if (event.key === 'c' || event.key === 'C' || event.code === 'KeyC') {
                 this.activateCreatureAbility();
             }
             
-            // Also activate camouflage on Q key for octopus (same as ink key)
-            if (event.key === 'q' || event.key === 'Q') {
-                this.activateCreatureAbility();
+            // Q key activates ink for squid, and camouflage for octopus
+            if (event.key === 'q' || event.key === 'Q' || event.code === 'KeyQ') {
+                if (this.game.creature && this.game.creature.type === 'squid') {
+                    if (this.game.creature.skinId === 'octopus') {
+                        this.activateCreatureAbility();
+                    } else if (this.game.inkSystem) {
+                        this.game.inkSystem.tryActivateInk();
+                    }
+                }
             }
         });
         

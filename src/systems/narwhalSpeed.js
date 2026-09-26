@@ -5,11 +5,20 @@ export class NarwhalSpeed {
     
     // Apply speed modifier to narwhal's current speed
     applySpeedModifier(narwhal, currentSpeed) {
+        let speed = currentSpeed;
         // If narwhal has a speed modifier defined, apply it
         if (narwhal.speedModifier && narwhal.speedModifier > 1.0) {
-            return currentSpeed * narwhal.speedModifier;
+            speed = currentSpeed * narwhal.speedModifier;
         }
-        return currentSpeed;
+        // Apply ink slow effect (50% speed penalty)
+        if (narwhal.isInked) {
+            speed *= 0.5;
+        }
+        // Apply tentacle slow effect (35% speed penalty)
+        if (narwhal._tentacleSlowed) {
+            speed *= 0.65;
+        }
+        return speed;
     }
     
     // Initialize a new narwhal with default speed settings
