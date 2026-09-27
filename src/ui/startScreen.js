@@ -294,7 +294,8 @@ export class StartScreen {
 
     updateNetworkStatus(status) {
         if (!this.serverBadge) return;
-        const count = status?.playersCount || (this.game.room?.peers ? Object.keys(this.game.room.peers).length : 1);
+        const realCount = this.game.room?.getRealPlayerCount ? this.game.room.getRealPlayerCount() : (status?.playersCount || 1);
+        const botCount = this.game.room?.getAIBotCount ? this.game.room.getAIBotCount() : (status?.aiCount || 6);
         const connecting = status?.connecting ?? (this.game.room && this.game.room.isConnecting);
 
         if (connecting) {
@@ -302,7 +303,10 @@ export class StartScreen {
             this.serverBadge.innerHTML = `<span class="status-pulse-dot yellow"></span> Connecting to Multiplayer Ocean...`;
         } else {
             this.serverBadge.className = 'server-status-badge online';
-            this.serverBadge.innerHTML = `<span class="status-pulse-dot"></span> <strong>Multiplayer Online:</strong> ${count} player${count === 1 ? '' : 's'} in ocean`;
+            const playerLabel = realCount === 1 
+                ? '<strong>Multiplayer Online:</strong> 1 Real Player (Solo Ocean)' 
+                : `<strong>Multiplayer Online:</strong> ${realCount} Real Players (PvP Ready!)`;
+            this.serverBadge.innerHTML = `<span class="status-pulse-dot"></span> ${playerLabel} <span style="opacity: 0.7; font-size: 0.85em;">(${botCount} Ocean Wildlife)</span>`;
         }
     }
     
@@ -311,10 +315,12 @@ export class StartScreen {
         this.container.style.display = 'flex';
         this.updateCreatureNames();
         if (this.game.room) {
-            const count = this.game.room.getOnlineCount ? this.game.room.getOnlineCount() : Object.keys(this.game.room.peers || {}).length;
+            const realCount = this.game.room.getRealPlayerCount ? this.game.room.getRealPlayerCount() : 1;
+            const botCount = this.game.room.getAIBotCount ? this.game.room.getAIBotCount() : 6;
             this.updateNetworkStatus({
                 connected: true,
-                playersCount: count
+                playersCount: realCount,
+                aiCount: botCount
             });
         }
     }

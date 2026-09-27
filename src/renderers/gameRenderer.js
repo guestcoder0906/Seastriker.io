@@ -207,23 +207,28 @@ export class GameRenderer {
     drawNetworkHUD(ctx) {
         if (!this.game.gameActive) return;
         ctx.save();
-        const isOnline = this.game.room && this.game.room.isServerConnected;
-        const isConnecting = this.game.room && this.game.room.isConnecting;
-        const count = this.game.room?.getOnlineCount 
-            ? this.game.room.getOnlineCount() 
-            : Math.max(1, Object.keys(this.game.room?.peers || {}).length);
+        const isOnline = this.game.room && (this.game.room.isServerConnected || this.game.room.isP2PConnected || this.game.room.isBroadcastActive);
+        const isConnecting = this.game.room && this.game.room.isConnecting && !isOnline;
+        const realCount = this.game.room?.getRealPlayerCount 
+            ? this.game.room.getRealPlayerCount() 
+            : Math.max(1, Object.keys(this.game.room?.peers || {}).filter(id => !id.startsWith('ai-')).length);
 
         ctx.font = '12px "Segoe UI", Arial, sans-serif';
-        ctx.fillStyle = '#22c55e';
+        ctx.fillStyle = isConnecting ? '#f59e0b' : '#22c55e';
         ctx.beginPath();
         ctx.arc(20, 20, 4, 0, Math.PI * 2);
         ctx.fill();
 
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
         ctx.textAlign = 'left';
-        const label = isConnecting 
-            ? 'Connecting to Ocean...' 
-            : `Multiplayer Online (${count} player${count === 1 ? '' : 's'})`;
+        let label = 'Connecting...';
+        if (isConnecting) {
+            label = 'Connecting to Multiplayer Ocean...';
+        } else if (realCount === 1) {
+            label = 'Multiplayer Online (1 Real Player - Solo Ocean)';
+        } else {
+            label = `Multiplayer Online (${realCount} Real Players - PvP Live)`;
+        }
         ctx.fillText(label, 30, 24);
         ctx.restore();
     }

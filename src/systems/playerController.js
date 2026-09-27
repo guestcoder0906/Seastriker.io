@@ -230,7 +230,6 @@ export class PlayerController {
                     });
                 }
             } else if (collisionResult.type === 'lethal') {
-                this.game.creature.kills++;
                 this.dispatchAttackToTarget(
                     clientId,
                     collisionResult.damage,
@@ -274,7 +273,6 @@ export class PlayerController {
             }
 
             if (collisionResult.type === 'lethal') {
-                this.game.creature.kills++;
                 this.dispatchAttackToTarget(
                     clientId,
                     collisionResult.damage,
@@ -318,7 +316,6 @@ export class PlayerController {
             }
 
             if (collisionResult.type === 'lethal') {
-                this.game.creature.kills++;
                 this.dispatchAttackToTarget(
                     clientId,
                     collisionResult.damage,
@@ -360,7 +357,6 @@ export class PlayerController {
             }
 
             if (collisionResult.type === 'lethal') {
-                this.game.creature.kills++;
                 this.dispatchAttackToTarget(
                     clientId,
                     collisionResult.damage,

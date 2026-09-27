@@ -559,10 +559,13 @@ class NarwhaleGame {
         }
         
         for (const clientId in this.playerPresences) {
+            // AIs DO NOT count as players - only real human players are shown on the leaderboard
+            if (clientId.startsWith('ai-')) {
+                continue;
+            }
             if (clientId !== this.room.clientId && (!this.creature || clientId !== this.creature.id)) {
                 const presence = this.playerPresences[clientId];
-                const isAI = clientId.startsWith('ai-');
-                const name = this.room.peers[clientId]?.username || presence?.name || (isAI ? "Ocean Predator" : "Player");
+                const name = this.room.peers[clientId]?.username || presence?.name || "Player";
                 const kills = (this.room.peers[clientId]?.kills !== undefined ? this.room.peers[clientId].kills : presence?.kills) || 0;
                 
                 players.push({
@@ -570,7 +573,7 @@ class NarwhaleGame {
                     name: name,
                     kills: kills,
                     isLocal: false,
-                    isAI: isAI
+                    isAI: false
                 });
             }
         }
@@ -585,6 +588,11 @@ class NarwhaleGame {
                 <div class="player-kills">${player.kills}</div>
             </div>`;
         });
+        if (players.length === 1) {
+            html += `<div class="player-entry" style="opacity: 0.6; font-size: 11px; justify-content: center; padding: 4px 0;">
+                <em>Waiting for rivals to join...</em>
+            </div>`;
+        }
         leaderboardEl.innerHTML = html;
     }
 

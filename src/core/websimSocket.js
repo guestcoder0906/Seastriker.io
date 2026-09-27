@@ -1,58 +1,73 @@
 import { io } from "socket.io-client";
+import { joinRoom as joinMqttRoom, selfId as mqttSelfId } from "@trystero-p2p/mqtt";
 import { joinRoom as joinTorrentRoom, selfId as torrentSelfId } from "@trystero-p2p/torrent";
-import { joinRoom as joinNostrRoom, selfId as nostrSelfId } from "@trystero-p2p/nostr";
 
-// High-speed, dedicated WebTorrent WebSocket trackers for WebRTC signaling
-const TORRENT_TRACKERS = [
-    'wss://tracker.openwebtorrent.com',
-    'wss://tracker.webtorrent.dev'
+// Dedicated WebSocket Proxies (MQTT & WebTorrent) for real-time global connectivity on Vercel & serverless deployments
+const DEDICATED_MQTT_BROKERS = [
+    'wss://broker.emqx.io:8084/mqtt',
+    'wss://test.mosquitto.org:8081/mqtt',
+    'wss://broker.hivemq.com:8884/mqtt',
+    'wss://public.cloud.shiftr.io'
 ];
 
-// Fallback Nostr relays
-const NOSTR_RELAYS = [
-    'wss://relay.damus.io',
-    'wss://purplerelay.com',
-    'wss://nostr.mom'
+const DEDICATED_TORRENT_TRACKERS = [
+    'wss://tracker.openwebtorrent.com',
+    'wss://tracker.webtorrent.dev'
 ];
 
 function bindAction(room, actionName) {
     if (!room || typeof room.makeAction !== 'function') {
         return { send: () => {}, onMessage: () => {} };
     }
-    const res = room.makeAction(actionName);
-    if (Array.isArray(res)) {
-        return {
-            send: (data, targetId) => res[0](data, targetId),
-            onMessage: (handler) => res[1](handler)
-        };
-    }
-    if (res && typeof res === 'object') {
-        return {
-            send: (data, targetId) => {
-                if (typeof res.send === 'function') {
-                    if (targetId) {
-                        res.send(data, { target: targetId });
-                    } else {
-                        res.send(data);
+    try {
+        const res = room.makeAction(actionName);
+        if (Array.isArray(res)) {
+            return {
+                send: (data, targetId) => {
+                    try {
+                        if (targetId) {
+                            res[0](data, targetId);
+                        } else {
+                            res[0](data);
+                        }
+                    } catch (e) {
+                        try { res[0](data); } catch (err) {}
+                    }
+                },
+                onMessage: (handler) => res[1](handler)
+            };
+        }
+        if (res && typeof res === 'object') {
+            return {
+                send: (data, targetId) => {
+                    try {
+                        if (typeof res.send === 'function') {
+                            res.send(data, targetId ? { target: targetId } : undefined);
+                        }
+                    } catch (e) {}
+                },
+                onMessage: (handler) => {
+                    if ('onMessage' in res) {
+                        res.onMessage = (data, meta) => {
+                            const peerId = typeof meta === 'string' ? meta : (meta?.peerId || '');
+                            handler(data, peerId);
+                        };
                     }
                 }
-            },
-            onMessage: (handler) => {
-                if ('onMessage' in res) {
-                    res.onMessage = (data, meta) => {
-                        const peerId = typeof meta === 'string' ? meta : (meta?.peerId || '');
-                        handler(data, peerId);
-                    };
-                }
-            }
-        };
+            };
+        }
+    } catch (e) {
+        console.warn(`[Network] Action bind failed for ${actionName}:`, e);
     }
     return { send: () => {}, onMessage: () => {} };
 }
 
 export class WebsimSocket {
     constructor() {
-        this.clientId = torrentSelfId || nostrSelfId || ("player_" + Math.random().toString(36).substring(2, 9));
+        const savedClientId = typeof localStorage !== 'undefined' ? localStorage.getItem('ocean_player_id') : null;
+        this.clientId = savedClientId || mqttSelfId || torrentSelfId || ("player_" + Math.random().toString(36).substring(2, 9) + "_" + Math.floor(Math.random() * 1000));
+        try { localStorage.setItem('ocean_player_id', this.clientId); } catch (e) {}
+
         this.username = "Player";
         this.peers = {};
         this.roomState = {
@@ -75,8 +90,10 @@ export class WebsimSocket {
 
         this.isServerConnected = false;
         this.isP2PConnected = false;
+        this.isBroadcastActive = false;
         this.isConnecting = true;
         this.lastPresenceEmit = 0;
+        this._recentDamage = {};
 
         // P2P Action dispatchers
         this.actions = null;
@@ -99,6 +116,7 @@ export class WebsimSocket {
         if (typeof window === 'undefined' || !('BroadcastChannel' in window)) return;
         try {
             this.broadcastChannel = new BroadcastChannel('seastriker_ocean_multiplayer');
+            this.isBroadcastActive = true;
             this.broadcastChannel.onmessage = (event) => {
                 const msg = event.data;
                 if (!msg || !msg.type || msg.fromId === this.clientId) return;
@@ -132,6 +150,10 @@ export class WebsimSocket {
                     this.handleIncomingPresence(msg.fromId, msg.data);
                 } else if (msg.type === 'attackPlayer' && msg.targetId === this.clientId) {
                     this.handleIncomingDamage(msg.data);
+                } else if (msg.type === 'presenceUpdateRequest' && msg.targetId === this.clientId) {
+                    for (const cb of this.presenceRequestCallbacks) {
+                        cb(msg.data.updateRequest, msg.fromId);
+                    }
                 } else if (msg.type === 'killBroadcast') {
                     this.handleIncomingKill(msg.data);
                 }
@@ -163,16 +185,11 @@ export class WebsimSocket {
 
         this.peers[this.clientId] = { id: this.clientId, username: this.username, kills: 0 };
 
-        // 1. Try local Socket.IO connection first if on localhost
-        const isLocal = typeof window !== 'undefined' && 
-            (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
-        
-        if (isLocal) {
-            await this.trySocketIo();
-        }
+        // 1. Connect to Dedicated WebSocket / Socket.IO server (runs on Cloud Run, dev server, or configured proxy)
+        await this.trySocketIo();
 
-        // 2. Initialize single, high-performance P2P room (Torrent first, Nostr fallback)
-        this.initP2PRoom();
+        // 2. Initialize Dedicated WebSocket Proxy P2P Mesh (MQTT Brokers & WebTorrent for Vercel & serverless)
+        this.initP2PMesh();
 
         // 3. Announce to local tabs via BroadcastChannel
         if (this.broadcastChannel) {
@@ -191,18 +208,40 @@ export class WebsimSocket {
     trySocketIo() {
         return new Promise((resolve) => {
             try {
-                this.socket = io({
-                    auth: { username: this.username },
+                // Determine WebSocket server / proxy target
+                let targetUrl = undefined;
+                if (typeof window !== 'undefined') {
+                    const customProxy = window.WEBSOCKET_PROXY_URL || 
+                        (window.localStorage && window.localStorage.getItem('ocean_ws_proxy')) ||
+                        (typeof process !== 'undefined' && process.env?.VITE_WS_PROXY_URL) ||
+                        (import.meta?.env?.VITE_WS_PROXY_URL);
+
+                    if (customProxy) {
+                        targetUrl = customProxy;
+                    }
+                }
+
+                this.socket = io(targetUrl, {
+                    auth: { 
+                        username: this.username,
+                        clientId: this.clientId 
+                    },
                     transports: ['websocket', 'polling'],
                     reconnection: true,
-                    reconnectionAttempts: 2,
-                    timeout: 1500
+                    reconnectionAttempts: 4,
+                    timeout: 2500
                 });
 
                 this.socket.on('connect', () => {
                     this.isServerConnected = true;
                     if (this.socket.id) {
+                        const oldId = this.clientId;
                         this.clientId = this.socket.id;
+                        if (oldId && oldId !== this.clientId) {
+                            delete this.peers[oldId];
+                            delete this.localPresences[oldId];
+                        }
+                        this.peers[this.clientId] = { id: this.clientId, username: this.username, kills: 0 };
                         if (typeof window !== 'undefined' && window.game && window.game.creature) {
                             window.game.creature.id = this.clientId;
                         }
@@ -213,17 +252,36 @@ export class WebsimSocket {
 
                 this.socket.on('init', (data) => {
                     this.isServerConnected = true;
-                    if (data.id) this.clientId = data.id;
+                    if (data.id) {
+                        this.clientId = data.id;
+                        if (typeof window !== 'undefined' && window.game && window.game.creature) {
+                            window.game.creature.id = this.clientId;
+                        }
+                    }
                     if (data.roomState) this.roomState = data.roomState;
-                    if (data.peers) this.peers = data.peers;
-                    if (data.bots) this.localPresences = { ...data.bots, ...this.localPresences };
+                    if (data.peers) {
+                        for (const pid in data.peers) {
+                            if (!pid.startsWith('ai-')) {
+                                this.peers[pid] = data.peers[pid];
+                            }
+                        }
+                    }
+                    if (data.bots) {
+                        this.localPresences = { ...data.bots, ...this.localPresences };
+                    }
                     this.notifyStatus();
                     resolve();
                 });
 
                 this.socket.on('networkTick', (data) => {
                     if (!data) return;
-                    if (data.peers) this.peers = data.peers;
+                    if (data.peers) {
+                        for (const pid in data.peers) {
+                            if (!pid.startsWith('ai-')) {
+                                this.peers[pid] = data.peers[pid];
+                            }
+                        }
+                    }
                     const combined = { ...(data.bots || {}), ...(data.players || {}) };
                     this.localPresences = combined;
                     for (const cb of this.presenceCallbacks) cb(combined);
@@ -236,12 +294,20 @@ export class WebsimSocket {
                 });
 
                 this.socket.on('takeDamage', (data) => this.handleIncomingDamage(data));
+                this.socket.on('presenceUpdateRequest', (data) => {
+                    if (!data || !data.updateRequest) return;
+                    for (const cb of this.presenceRequestCallbacks) {
+                        cb(data.updateRequest, data.fromClientId);
+                    }
+                });
                 this.socket.on('killBroadcast', (data) => this.handleIncomingKill(data));
                 this.socket.on('killAwarded', (data) => this.handleKillAwarded(data));
 
                 this.socket.on('peerJoined', (peer) => {
-                    this.peers[peer.id] = peer;
-                    this.notifyStatus();
+                    if (peer && peer.id && !peer.id.startsWith('ai-')) {
+                        this.peers[peer.id] = peer;
+                        this.notifyStatus();
+                    }
                 });
 
                 this.socket.on('peerLeft', (id) => {
@@ -256,32 +322,32 @@ export class WebsimSocket {
                     resolve();
                 });
 
-                setTimeout(resolve, 1500);
+                setTimeout(resolve, 2000);
             } catch (e) {
                 resolve();
             }
         });
     }
 
-    initP2PRoom() {
-        const appId = 'seastriker-ocean-2026';
-        const roomId = 'ocean-main-lobby';
+    initP2PMesh() {
+        const appId = 'seastriker-ocean-global-2026';
+        const roomId = 'ocean-main-arena';
 
+        // 1. Try Dedicated WebSocket MQTT Proxies (works everywhere, ideal for Vercel)
         try {
-            // WebTorrent WebRTC is ultra-fast and avoids duplicate socket overhead
-            this.p2pRoom = joinTorrentRoom({
+            this.p2pRoom = joinMqttRoom({
                 appId,
-                trackerUrls: TORRENT_TRACKERS
+                relayUrls: DEDICATED_MQTT_BROKERS
             }, roomId);
         } catch (e) {
-            console.warn('[P2P] WebTorrent init failed, falling back to Nostr:', e);
+            console.warn('[Network] MQTT proxy room failed, falling back to WebTorrent:', e);
             try {
-                this.p2pRoom = joinNostrRoom({
+                this.p2pRoom = joinTorrentRoom({
                     appId,
-                    relayUrls: NOSTR_RELAYS
+                    trackerUrls: DEDICATED_TORRENT_TRACKERS
                 }, roomId);
             } catch (err) {
-                console.error('[P2P] All P2P signaling failed:', err);
+                console.error('[Network] All P2P signaling failed:', err);
                 return;
             }
         }
@@ -291,29 +357,30 @@ export class WebsimSocket {
         const presenceAction = bindAction(this.p2pRoom, 'presence');
         const peerInfoAction = bindAction(this.p2pRoom, 'peerInfo');
         const attackPlayerAction = bindAction(this.p2pRoom, 'attackPlayer');
+        const presenceRequestAction = bindAction(this.p2pRoom, 'presenceRequest');
         const killBroadcastAction = bindAction(this.p2pRoom, 'killBroadcast');
 
         this.actions = {
             sendPresence: (data, targetId) => presenceAction.send(data, targetId),
             sendPeerInfo: (data, targetId) => peerInfoAction.send(data, targetId),
             sendAttackPlayer: (data, targetId) => attackPlayerAction.send(data, targetId),
+            sendPresenceRequest: (data, targetId) => presenceRequestAction.send(data, targetId),
             sendKillBroadcast: (data, targetId) => killBroadcastAction.send(data, targetId)
         };
 
         const handlePeerJoin = (peerId) => {
             this.isP2PConnected = true;
             this.peers[peerId] = { id: peerId, username: 'Player', kills: 0 };
-
+            
             peerInfoAction.send({
                 id: this.clientId,
                 username: this.username,
                 kills: this.peers[this.clientId]?.kills || 0
-            }, peerId);
+            });
 
             if (this.localPresences[this.clientId]) {
-                presenceAction.send(this.localPresences[this.clientId], peerId);
+                presenceAction.send(this.localPresences[this.clientId]);
             }
-
             this.notifyStatus();
         };
 
@@ -339,8 +406,9 @@ export class WebsimSocket {
         peerInfoAction.onMessage((data, peerId) => {
             if (!data) return;
             this.isP2PConnected = true;
-            this.peers[peerId] = {
-                id: peerId,
+            const actualId = data.id || peerId;
+            this.peers[actualId] = {
+                id: actualId,
                 username: data.username || 'Player',
                 kills: data.kills || 0
             };
@@ -348,20 +416,27 @@ export class WebsimSocket {
         });
 
         presenceAction.onMessage((data, peerId) => {
-            if (this.isServerConnected) return;
-            this.handleIncomingPresence(peerId, data);
+            const actualId = data?.id || peerId;
+            this.handleIncomingPresence(actualId, data);
         });
 
         attackPlayerAction.onMessage((data, attackerId) => {
-            if (!data || data.targetId !== this.clientId) return;
+            if (!data || (data.targetId && data.targetId !== this.clientId)) return;
             this.handleIncomingDamage({
-                attackerId,
-                attackerName: this.peers[attackerId]?.username || 'Player',
+                attackerId: data.attackerId || attackerId,
+                attackerName: data.attackerName || this.peers[attackerId]?.username || 'Player',
                 damage: data.damage,
                 hitType: data.hitType,
                 knockbackAngle: data.angle,
                 knockbackForce: data.knockbackForce
             });
+        });
+
+        presenceRequestAction.onMessage((data, senderId) => {
+            if (!data || (data.targetId && data.targetId !== this.clientId)) return;
+            for (const cb of this.presenceRequestCallbacks) {
+                cb(data.updateRequest, data.fromClientId || senderId);
+            }
         });
 
         killBroadcastAction.onMessage((data) => {
@@ -370,7 +445,7 @@ export class WebsimSocket {
     }
 
     handleIncomingPresence(peerId, data) {
-        if (!data) return;
+        if (!data || peerId.startsWith('ai-')) return;
         data.id = peerId;
         data.name = this.peers[peerId]?.username || data.name || 'Player';
         this.localPresences[peerId] = data;
@@ -380,7 +455,16 @@ export class WebsimSocket {
     }
 
     handleIncomingDamage(data) {
+        if (!data) return;
+        const now = performance.now();
+        const damageKey = `${data.attackerId}_${data.damage}_${data.hitType}`;
+        if (this._recentDamage[damageKey] && (now - this._recentDamage[damageKey] < 180)) {
+            return; // Deduplicate multi-channel delivery
+        }
+        this._recentDamage[damageKey] = now;
+
         for (const cb of this.damageCallbacks) cb(data);
+
         if (typeof window !== 'undefined' && window.game && window.game.healthSystem) {
             window.game.healthSystem.processDamage(
                 data.hitType || 'bodyHit',
@@ -404,14 +488,16 @@ export class WebsimSocket {
             cb(data);
         }
         if (data.killerId === this.clientId) {
+            const currentKills = (this.peers[this.clientId]?.kills || 0) + 1;
             this.handleKillAwarded({
                 victimName: data.victimName,
-                kills: this.peers[this.clientId]?.kills || 1
+                kills: currentKills
             });
         }
     }
 
     handleKillAwarded(data) {
+        if (!data) return;
         for (const cb of this.killAwardedCallbacks) cb(data);
         if (typeof window !== 'undefined' && window.game && window.game.creature) {
             window.game.creature.kills = data.kills;
@@ -428,20 +514,35 @@ export class WebsimSocket {
         }
     }
 
+    // Return count of REAL human players (AIs NEVER count as players)
+    getRealPlayerCount() {
+        const humanPeers = Object.values(this.peers || {}).filter(p => p && p.id && !p.id.startsWith('ai-'));
+        return Math.max(1, humanPeers.length);
+    }
+
+    // Compatible alias: strictly returns REAL players count
     getOnlineCount() {
-        const humanPeersCount = Math.max(1, Object.keys(this.peers).length);
-        const aliveBots = (typeof window !== 'undefined' && window.game?.aiController?.aiPlayers) 
-            ? Object.keys(window.game.aiController.aiPlayers).length 
-            : 6;
-        return humanPeersCount + aliveBots;
+        return this.getRealPlayerCount();
+    }
+
+    // Count of AI bots / ocean wildlife (distinct from real players)
+    getAIBotCount() {
+        if (typeof window !== 'undefined' && window.game?.aiController?.aiPlayers) {
+            return Object.keys(window.game.aiController.aiPlayers).length;
+        }
+        return 6;
     }
 
     notifyStatus() {
-        const count = this.getOnlineCount();
+        const realPlayersCount = this.getRealPlayerCount();
+        const aiBotCount = this.getAIBotCount();
         const status = {
-            connected: true,
-            connecting: false,
-            playersCount: count,
+            connected: this.isServerConnected || this.isP2PConnected || this.isBroadcastActive,
+            connecting: this.isConnecting,
+            playersCount: realPlayersCount,
+            aiCount: aiBotCount,
+            isServerConnected: this.isServerConnected,
+            isP2PConnected: this.isP2PConnected,
             peers: this.peers
         };
         for (const cb of this.statusCallbacks) {
@@ -474,10 +575,11 @@ export class WebsimSocket {
         this.killAwardedCallbacks.push(callback);
     }
 
-    // High performance compact presence serialization (reduces payload by 70%)
+    // High performance compact presence serialization
     packPresence(data) {
         if (!data) return null;
         return {
+            id: this.clientId,
             x: Math.round(data.x * 10) / 10,
             y: Math.round(data.y * 10) / 10,
             angle: Math.round((data.angle || 0) * 100) / 100,
@@ -489,7 +591,7 @@ export class WebsimSocket {
                 round: s.round
             })) : [],
             color: data.color,
-            name: data.name,
+            name: this.username || data.name,
             type: data.type,
             skinId: data.skinId,
             isDashing: !!data.isDashing,
@@ -502,20 +604,22 @@ export class WebsimSocket {
 
     updatePresence(data) {
         if (!data) return;
-        this.localPresences[this.clientId] = data;
-
+        this.localPresences[this.clientId] = { ...data, id: this.clientId, name: this.username };
         const now = performance.now();
-        // 45ms throttle (~22Hz update rate) prevents WebRTC data bufferbloat
-        if (now - this.lastPresenceEmit >= 45) {
+
+        // 40ms throttle (~25Hz update rate)
+        if (now - this.lastPresenceEmit >= 40) {
             this.lastPresenceEmit = now;
             const packed = this.packPresence(data);
 
             if (this.socket && this.socket.connected) {
                 this.socket.emit('updatePresence', packed);
             }
+
             if (this.actions?.sendPresence) {
                 try { this.actions.sendPresence(packed); } catch (e) {}
             }
+
             if (this.broadcastChannel) {
                 try {
                     this.broadcastChannel.postMessage({
@@ -529,13 +633,25 @@ export class WebsimSocket {
     }
 
     attackPlayer(targetId, damage, hitType = 'bodyHit', angle = 0, knockbackForce = 6) {
-        const payload = { targetId, damage, hitType, angle, knockbackForce };
+        if (!targetId || targetId === this.clientId) return;
+        const payload = {
+            targetId,
+            attackerId: this.clientId,
+            attackerName: this.username,
+            damage,
+            hitType,
+            angle,
+            knockbackForce
+        };
+
         if (this.socket && this.socket.connected) {
             this.socket.emit('attackPlayer', payload);
         }
+
         if (this.actions?.sendAttackPlayer) {
             try { this.actions.sendAttackPlayer(payload, targetId); } catch (e) {}
         }
+
         if (this.broadcastChannel) {
             try {
                 this.broadcastChannel.postMessage({
@@ -562,12 +678,15 @@ export class WebsimSocket {
             victimId: this.clientId,
             victimName: this.username
         };
+
         if (this.socket && this.socket.connected) {
             this.socket.emit('playerDied', { killerId });
         }
+
         if (this.actions?.sendKillBroadcast) {
             try { this.actions.sendKillBroadcast(broadcast); } catch (e) {}
         }
+
         if (this.broadcastChannel) {
             try {
                 this.broadcastChannel.postMessage({
@@ -577,12 +696,31 @@ export class WebsimSocket {
                 });
             } catch (e) {}
         }
+
         for (const cb of this.killBroadcastCallbacks) cb(broadcast);
     }
 
     requestPresenceUpdate(targetId, updateRequest) {
+        if (!targetId || targetId === this.clientId) return;
+        const payload = { targetId, updateRequest, fromClientId: this.clientId };
+
         if (this.socket && this.socket.connected) {
-            this.socket.emit('requestPresenceUpdate', { targetId, updateRequest });
+            this.socket.emit('requestPresenceUpdate', payload);
+        }
+
+        if (this.actions?.sendPresenceRequest) {
+            try { this.actions.sendPresenceRequest(payload, targetId); } catch (e) {}
+        }
+
+        if (this.broadcastChannel) {
+            try {
+                this.broadcastChannel.postMessage({
+                    type: 'presenceUpdateRequest',
+                    fromId: this.clientId,
+                    targetId,
+                    data: payload
+                });
+            } catch (e) {}
         }
     }
 
@@ -591,20 +729,25 @@ export class WebsimSocket {
         if (!clean) clean = "Player";
         this.username = clean;
         try { localStorage.setItem('username', clean); } catch (e) {}
+
         if (this.peers[this.clientId]) {
             this.peers[this.clientId].username = clean;
         }
+
         if (this.socket && this.socket.connected) {
             this.socket.emit('setUsername', { username: clean });
         }
+
         const info = {
             id: this.clientId,
             username: clean,
             kills: this.peers[this.clientId]?.kills || 0
         };
+
         if (this.actions?.sendPeerInfo) {
             try { this.actions.sendPeerInfo(info); } catch (e) {}
         }
+
         if (this.broadcastChannel) {
             try {
                 this.broadcastChannel.postMessage({
@@ -614,6 +757,7 @@ export class WebsimSocket {
                 });
             } catch (e) {}
         }
+
         this.notifyStatus();
     }
 

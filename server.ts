@@ -382,23 +382,36 @@ async function startServer() {
   });
 
   app.get("/api/status", (req, res) => {
+    const realPlayersCount = Object.values(peers).filter(p => p && p.id && !p.id.startsWith("ai-")).length;
     res.json({
       online: true,
-      playersCount: Object.keys(peers).length,
+      playersCount: Math.max(1, realPlayersCount),
       serverBotsCount: serverBots.length
     });
   });
+
+  function findTargetSocketId(targetId: string): string | null {
+    if (!targetId) return null;
+    if (peers[targetId]) return targetId;
+    for (const sid in peers) {
+      if (peers[sid].id === targetId || presences[sid]?.id === targetId) {
+        return sid;
+      }
+    }
+    return null;
+  }
 
   io.on("connection", (socket) => {
     const clientUsername =
       (socket.handshake.auth && socket.handshake.auth.username) ||
       "Player_" + Math.floor(100 + Math.random() * 900);
+    const peerClientId = (socket.handshake.auth && socket.handshake.auth.clientId) || socket.id;
 
-    peers[socket.id] = { id: socket.id, username: clientUsername, kills: 0 };
+    peers[socket.id] = { id: peerClientId, username: clientUsername, kills: 0 };
 
     // Send init packet immediately
     socket.emit("init", {
-      id: socket.id,
+      id: peerClientId,
       roomState,
       peers,
       bots: formatBots(serverBots)
@@ -411,7 +424,7 @@ async function startServer() {
     // Real-time presence updates (movement, angle, segments, etc.)
     socket.on("updatePresence", (data) => {
       if (!data) return;
-      data.id = socket.id;
+      data.id = peerClientId;
       data.name = peers[socket.id]?.username || data.name || "Player";
       presences[socket.id] = { ...(presences[socket.id] || {}), ...data };
       if (data.kills !== undefined && peers[socket.id]) {
@@ -421,12 +434,12 @@ async function startServer() {
 
     // Player attacks another human player
     socket.on("attackPlayer", (data) => {
-      if (!data || !data.targetId || data.targetId === socket.id) return;
-      const targetPeer = peers[data.targetId];
-      if (!targetPeer) return;
+      if (!data || !data.targetId || data.targetId === socket.id || data.targetId === peerClientId) return;
+      const targetSocketId = findTargetSocketId(data.targetId);
+      if (!targetSocketId) return;
 
-      io.to(data.targetId).emit("takeDamage", {
-        attackerId: socket.id,
+      io.to(targetSocketId).emit("takeDamage", {
+        attackerId: peerClientId,
         attackerName: peers[socket.id]?.username || "Player",
         damage: data.damage || 25,
         hitType: data.hitType || "bodyHit",
@@ -458,7 +471,7 @@ async function startServer() {
 
           socket.emit("killAwarded", { victimName: bot.name, kills: currentKills });
           io.emit("killBroadcast", {
-            killerId: socket.id,
+            killerId: peerClientId,
             killerName: peers[socket.id].username,
             victimId: bot.id,
             victimName: bot.name
@@ -476,35 +489,40 @@ async function startServer() {
       }
 
       const killerId = data?.killerId;
-      if (killerId && peers[killerId] && killerId !== socket.id) {
-        peers[killerId].kills = (peers[killerId].kills || 0) + 1;
-        const currentKills = peers[killerId].kills;
-        if (presences[killerId]) {
-          presences[killerId].kills = currentKills;
+      if (killerId) {
+        const killerSocketId = findTargetSocketId(killerId);
+        if (killerSocketId && killerSocketId !== socket.id && peers[killerSocketId]) {
+          peers[killerSocketId].kills = (peers[killerSocketId].kills || 0) + 1;
+          const currentKills = peers[killerSocketId].kills;
+          if (presences[killerSocketId]) {
+            presences[killerSocketId].kills = currentKills;
+          }
+
+          io.to(killerSocketId).emit("killAwarded", {
+            victimName: peers[socket.id]?.username || "Player",
+            kills: currentKills
+          });
+
+          io.emit("killBroadcast", {
+            killerId: peers[killerSocketId].id || killerSocketId,
+            killerName: peers[killerSocketId].username,
+            victimId: peerClientId,
+            victimName: peers[socket.id]?.username || "Player"
+          });
+
+          updateLeaderboardKills(peers[killerSocketId].username, currentKills);
         }
-
-        io.to(killerId).emit("killAwarded", {
-          victimName: peers[socket.id]?.username || "Player",
-          kills: currentKills
-        });
-
-        io.emit("killBroadcast", {
-          killerId,
-          killerName: peers[killerId].username,
-          victimId: socket.id,
-          victimName: peers[socket.id]?.username || "Player"
-        });
-
-        updateLeaderboardKills(peers[killerId].username, currentKills);
       }
     });
 
     // Direct damage event backwards compatibility
     socket.on("damagePlayer", (data) => {
       if (!data || !data.targetId) return;
-      io.to(data.targetId).emit("takeDamage", {
+      const targetSocketId = findTargetSocketId(data.targetId);
+      if (!targetSocketId) return;
+      io.to(targetSocketId).emit("takeDamage", {
         ...data,
-        attackerId: socket.id
+        attackerId: peerClientId
       });
     });
 
@@ -527,7 +545,7 @@ async function startServer() {
               if (presences[socket.id]) presences[socket.id].kills = currentKills;
               socket.emit("killAwarded", { victimName: bot.name, kills: currentKills });
               io.emit("killBroadcast", {
-                killerId: socket.id,
+                killerId: peerClientId,
                 killerName: peers[socket.id].username,
                 victimId: bot.id,
                 victimName: bot.name
@@ -537,10 +555,13 @@ async function startServer() {
           }
         }
       } else {
-        io.to(data.targetId).emit("presenceUpdateRequest", {
-          updateRequest: data.updateRequest,
-          fromClientId: socket.id
-        });
+        const targetSocketId = findTargetSocketId(data.targetId);
+        if (targetSocketId) {
+          io.to(targetSocketId).emit("presenceUpdateRequest", {
+            updateRequest: data.updateRequest,
+            fromClientId: peerClientId
+          });
+        }
       }
     });
 
