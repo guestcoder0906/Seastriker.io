@@ -236,7 +236,8 @@ export class StartScreen {
 
         try {
             const socketId = this.game.room && this.game.room.clientId ? this.game.room.clientId : null;
-            const res = await fetch('/api/check-username', {
+            const serverUrl = this.game.room?.serverUrl || '';
+            const res = await fetch(serverUrl + '/api/check-username', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ username: clean, socketId })
@@ -256,7 +257,7 @@ export class StartScreen {
                 }
             }
         } catch (e) {
-            // Offline fallback
+            // Offline / cross-origin fallback
         }
 
         this.isValidUsername = true;
@@ -294,14 +295,18 @@ export class StartScreen {
     updateNetworkStatus(status) {
         if (!this.serverBadge) return;
         const connected = status?.connected ?? (this.game.room && this.game.room.isServerConnected);
+        const connecting = status?.connecting ?? (this.game.room && this.game.room.isConnecting);
         const count = status?.playersCount || (this.game.room?.peers ? Object.keys(this.game.room.peers).length : 1);
 
         if (connected) {
             this.serverBadge.className = 'server-status-badge online';
             this.serverBadge.innerHTML = `<span class="status-pulse-dot"></span> <strong>Multiplayer Online:</strong> ${count} player${count === 1 ? '' : 's'} in ocean`;
-        } else {
+        } else if (connecting) {
             this.serverBadge.className = 'server-status-badge connecting';
             this.serverBadge.innerHTML = `<span class="status-pulse-dot yellow"></span> Connecting to Multiplayer Ocean...`;
+        } else {
+            this.serverBadge.className = 'server-status-badge online';
+            this.serverBadge.innerHTML = `<span class="status-pulse-dot"></span> <strong>Ocean Arena Active:</strong> Ready to Swim`;
         }
     }
     

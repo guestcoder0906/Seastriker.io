@@ -208,17 +208,21 @@ export class GameRenderer {
         if (!this.game.gameActive) return;
         ctx.save();
         const isOnline = this.game.room && this.game.room.isServerConnected;
-        const count = Object.keys(this.game.room?.peers || {}).length;
+        const isConnecting = this.game.room && this.game.room.isConnecting;
+        const count = Math.max(1, Object.keys(this.game.room?.peers || {}).length);
 
         ctx.font = '12px "Segoe UI", Arial, sans-serif';
-        ctx.fillStyle = isOnline ? '#22c55e' : '#eab308';
+        ctx.fillStyle = isOnline ? '#22c55e' : (isConnecting ? '#eab308' : '#38bdf8');
         ctx.beginPath();
         ctx.arc(20, 20, 4, 0, Math.PI * 2);
         ctx.fill();
 
         ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
         ctx.textAlign = 'left';
-        ctx.fillText(isOnline ? `Multiplayer Online (${count} player${count === 1 ? '' : 's'})` : 'Connecting to Ocean...', 30, 24);
+        const label = isOnline 
+            ? `Multiplayer Online (${count} player${count === 1 ? '' : 's'})` 
+            : (isConnecting ? 'Connecting to Ocean...' : `Ocean Arena: Active (${count} player${count === 1 ? '' : 's'})`);
+        ctx.fillText(label, 30, 24);
         ctx.restore();
     }
 
