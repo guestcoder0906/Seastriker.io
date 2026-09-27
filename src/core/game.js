@@ -54,6 +54,10 @@ class NarwhaleGame {
         this.room = new WebsimSocket();
         this.creature = null;
         this.gameActive = false; 
+        this.gameMode = 'global';
+        this.previewMode = 'global';
+        this.previewTargetId = null;
+        this.previewSwitchTimer = 0;
         this.players = {};
         this.playerPresences = {};
         this.bubbles = [];
@@ -164,7 +168,68 @@ class NarwhaleGame {
         this.updateLeaderboard();
     }
 
-    spawnPlayer(creatureType, overrideUsername) {
+    setGameMode(mode) {
+        this.gameMode = mode === 'ai' ? 'ai' : 'global';
+        this.previewMode = this.gameMode;
+        if (this.room?.setGameMode) {
+            this.room.setGameMode(this.gameMode);
+        }
+    }
+
+    setPreviewMode(mode) {
+        this.previewMode = mode === 'ai' ? 'ai' : 'global';
+        this.previewTargetId = null;
+        this.previewSwitchTimer = 99999;
+        if (this.room?.setGameMode) {
+            this.room.setGameMode(this.previewMode);
+        }
+    }
+
+    getPreviewPresences() {
+        if (!this.gameActive) {
+            if (this.previewMode === 'ai') {
+                const aiBots = Object.fromEntries(Object.entries(this.playerPresences).filter(([id]) => id.startsWith('ai-')));
+                if (Object.keys(aiBots).length > 0) {
+                    return aiBots;
+                }
+            } else {
+                const globalPlayers = Object.fromEntries(Object.entries(this.playerPresences).filter(([id, p]) => !id.startsWith('ai-') && !this.isSelf(id, p)));
+                if (Object.keys(globalPlayers).length > 0) {
+                    return globalPlayers;
+                }
+            }
+
+            if (this.room?.getPreviewPresences) {
+                const pres = this.room.getPreviewPresences(this.previewMode);
+                if (pres && Object.keys(pres).length > 0) {
+                    return pres;
+                }
+            }
+            return {};
+        }
+
+        // Active game: filter by current mode
+        if (this.gameMode === 'global') {
+            // Real players only! No AI bots
+            const filtered = {};
+            for (const id in this.playerPresences) {
+                if (!id.startsWith('ai-') && !this.isSelf(id, this.playerPresences[id])) {
+                    filtered[id] = this.playerPresences[id];
+                }
+            }
+            return filtered;
+        } else {
+            return this.playerPresences;
+        }
+    }
+
+    spawnPlayer(creatureType, overrideUsername, mode) {
+        if (mode) {
+            this.setGameMode(mode);
+        } else if (this.previewMode) {
+            this.setGameMode(this.previewMode);
+        }
+
         const spawnPoint = this.gameInitializer.generateSpawnPoint();
         
         let username = overrideUsername || 
@@ -198,9 +263,38 @@ class NarwhaleGame {
         this.updateLeaderboard();
     }
 
+    isSelf(clientId, presence) {
+        if (!clientId && !presence) return false;
+        if (this.room?.isSelf && this.room.isSelf(clientId, presence)) return true;
+        if (clientId && (clientId === this.room?.clientId || clientId === this.room?.socketId || clientId === this.room?.socket?.id)) return true;
+        if (this.creature && (clientId === this.creature.id || (presence && presence.id === this.creature.id))) return true;
+        if (presence && presence.id && (presence.id === this.room?.clientId || presence.id === this.room?.socketId || presence.id === this.room?.socket?.id)) return true;
+        return false;
+    }
+
     handlePresenceUpdate(presences) {
-        this.playerPresences = { ...presences };
+        // Strip out any duplicate / self presences from incoming data
+        const filtered = {};
+        for (const clientId in presences) {
+            const p = presences[clientId];
+            if (!this.isSelf(clientId, p)) {
+                // If remote entity already has smoothly interpolated segments, preserve them in filtered
+                if (this.players[clientId] && this.players[clientId].segments && this.players[clientId].segments.length > 0) {
+                    filtered[clientId] = {
+                        ...p,
+                        segments: this.players[clientId].segments,
+                        x: this.players[clientId].segments[0].x,
+                        y: this.players[clientId].segments[0].y,
+                        angle: this.players[clientId].segments[0].angle
+                    };
+                } else {
+                    filtered[clientId] = { ...p };
+                }
+            }
+        }
+        this.playerPresences = filtered;
         
+        // Put self under this.room.clientId ONLY
         if (this.gameActive && this.creature && this.creature.isAlive) {
             this.playerPresences[this.room.clientId] = this.creature.getPresenceData();
         }
@@ -214,17 +308,28 @@ class NarwhaleGame {
             }
         }
         
-        for (const clientId in this.playerPresences) {
-            const presence = this.playerPresences[clientId];
+        // Clean up self from this.players if ever present
+        for (const pid in this.players) {
+            if (this.isSelf(pid, this.players[pid])) {
+                delete this.players[pid];
+            }
+        }
+        
+        for (const clientId in presences) {
+            const presence = presences[clientId];
+            if (!presence || this.isSelf(clientId, presence)) {
+                continue; // DO NOT interpolate self in this.players
+            }
             
             if (!this.players[clientId] && presence.isAlive) {
+                const initialSegs = presence.segments ? presence.segments.map(s => ({ ...s })) : [];
                 this.players[clientId] = {
                     id: clientId,
                     name: this.room.peers[clientId]?.username || 
                           presence.name || 
                           (clientId.startsWith('ai-') ? "Creature" : "Player"),
-                    segments: presence.segments ? presence.segments.map(s => ({ ...s })) : [],
-                    targetSegments: presence.segments,
+                    segments: initialSegs,
+                    targetSegments: presence.segments ? presence.segments.map(s => ({ ...s })) : [],
                     color: presence.color,
                     type: presence.type || 'narwhal',
                     skinId: presence.skinId || 'default',
@@ -232,14 +337,22 @@ class NarwhaleGame {
                     isAlive: presence.isAlive,
                     kills: presence.kills || 0
                 };
+                if (this.playerPresences[clientId]) {
+                    this.playerPresences[clientId].segments = this.players[clientId].segments;
+                }
             } 
             else if (this.players[clientId]) {
-                this.players[clientId].targetSegments = presence.segments;
+                if (presence.segments && presence.segments.length > 0) {
+                    this.players[clientId].targetSegments = presence.segments.map(s => ({ ...s }));
+                }
                 this.players[clientId].isDashing = presence.isDashing;
                 this.players[clientId].isAlive = presence.isAlive;
                 this.players[clientId].kills = presence.kills || 0;
                 if (!this.players[clientId].segments || this.players[clientId].segments.length === 0) {
                     this.players[clientId].segments = presence.segments ? presence.segments.map(s => ({ ...s })) : [];
+                }
+                if (this.playerPresences[clientId]) {
+                    this.playerPresences[clientId].segments = this.players[clientId].segments;
                 }
             }
         }
@@ -266,27 +379,55 @@ class NarwhaleGame {
     update(deltaTime) {
         // Smoothly interpolate remote players between network ticks
         for (const clientId in this.players) {
-            if (clientId === this.room?.clientId || (this.creature && clientId === this.creature.id)) continue;
+            if (this.isSelf(clientId, this.players[clientId])) {
+                delete this.players[clientId];
+                continue;
+            }
             const p = this.players[clientId];
             if (p && p.targetSegments && p.targetSegments[0] && p.segments && p.segments[0]) {
-                const lerpFactor = 0.35;
-                p.segments[0].x += (p.targetSegments[0].x - p.segments[0].x) * lerpFactor;
-                p.segments[0].y += (p.targetSegments[0].y - p.segments[0].y) * lerpFactor;
-                
-                let diff = (p.targetSegments[0].angle || 0) - (p.segments[0].angle || 0);
-                while (diff < -Math.PI) diff += Math.PI * 2;
-                while (diff > Math.PI) diff -= Math.PI * 2;
-                p.segments[0].angle = (p.segments[0].angle || 0) + diff * lerpFactor;
+                const targetHead = p.targetSegments[0];
+                const currentHead = p.segments[0];
+                const distToTarget = Math.hypot(targetHead.x - currentHead.x, targetHead.y - currentHead.y);
 
-                for (let i = 1; i < p.segments.length; i++) {
-                    const prev = p.segments[i - 1];
-                    const cur = p.segments[i];
-                    const dx = prev.x - cur.x;
-                    const dy = prev.y - cur.y;
-                    const ang = Math.atan2(dy, dx);
-                    cur.x = prev.x - Math.cos(ang) * 14;
-                    cur.y = prev.y - Math.sin(ang) * 14;
-                    cur.angle = ang;
+                if (distToTarget > 400) {
+                    // Teleport / Respawn snap
+                    p.segments = p.targetSegments.map(s => ({ ...s }));
+                } else {
+                    // Adaptive responsive lerp: high agility when dashing or further away, buttery smooth when cruising
+                    const lerpFactor = distToTarget > 120 ? 0.52 : (p.isDashing ? 0.44 : 0.36);
+                    currentHead.x += (targetHead.x - currentHead.x) * lerpFactor;
+                    currentHead.y += (targetHead.y - currentHead.y) * lerpFactor;
+                    
+                    let diff = (targetHead.angle || 0) - (currentHead.angle || 0);
+                    while (diff < -Math.PI) diff += Math.PI * 2;
+                    while (diff > Math.PI) diff -= Math.PI * 2;
+                    currentHead.angle = (currentHead.angle || 0) + diff * lerpFactor;
+
+                    // Match segment array lengths safely
+                    while (p.segments.length < p.targetSegments.length) {
+                        const last = p.segments[p.segments.length - 1];
+                        p.segments.push({ ...last });
+                    }
+                    if (p.segments.length > p.targetSegments.length) {
+                        p.segments.length = p.targetSegments.length;
+                    }
+
+                    // Forward kinematics with natural fixed joint spacing
+                    const spacing = 13.5;
+                    for (let i = 1; i < p.segments.length; i++) {
+                        const prev = p.segments[i - 1];
+                        const cur = p.segments[i];
+                        const dx = prev.x - cur.x;
+                        const dy = prev.y - cur.y;
+                        const ang = Math.atan2(dy, dx);
+                        cur.x = prev.x - Math.cos(ang) * spacing;
+                        cur.y = prev.y - Math.sin(ang) * spacing;
+                        cur.angle = ang;
+                        if (p.targetSegments[i]) {
+                            cur.scale = p.targetSegments[i].scale;
+                            cur.round = p.targetSegments[i].round;
+                        }
+                    }
                 }
                 
                 if (this.playerPresences[clientId]) {
@@ -294,6 +435,7 @@ class NarwhaleGame {
                     this.playerPresences[clientId].x = p.segments[0].x;
                     this.playerPresences[clientId].y = p.segments[0].y;
                     this.playerPresences[clientId].angle = p.segments[0].angle;
+                    this.playerPresences[clientId].isDashing = p.isDashing;
                 }
             }
         }
@@ -399,12 +541,18 @@ class NarwhaleGame {
         }
         
         this.updateBubbles(deltaTime);
+
+        // While on start screen / menu, run live preview camera tracking
+        if (!this.gameActive) {
+            this.updatePreviewCamera(deltaTime);
+        }
     }
 
     render() {
         this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
         
-        this.renderer.render(this.ctx, this.camera, this.playerPresences, this.creature, this.bubbles);
+        const activePresences = this.getPreviewPresences();
+        this.renderer.render(this.ctx, this.camera, activePresences, this.creature, this.bubbles);
         
         if (this.gameActive && this.creature && this.creature.isInked) {
             this.inkSystem.drawInkEffect(this.ctx);
@@ -474,6 +622,22 @@ class NarwhaleGame {
         }
     }
 
+    clampCamera(scale = 1) {
+        const halfW = (this.canvas.width / 2);
+        const halfH = (this.canvas.height / 2);
+        const minCamX = halfW * (1 / scale - 1);
+        const maxCamX = CONFIG.WORLD_WIDTH - (this.canvas.width / scale) + halfW * (1 / scale - 1);
+        const minCamY = halfH * (1 / scale - 1);
+        const maxCamY = CONFIG.WORLD_HEIGHT - (this.canvas.height / scale) + halfH * (1 / scale - 1);
+        
+        if (maxCamX >= minCamX) {
+            this.camera.x = Math.max(minCamX, Math.min(this.camera.x, maxCamX));
+        }
+        if (maxCamY >= minCamY) {
+            this.camera.y = Math.max(minCamY, Math.min(this.camera.y, maxCamY));
+        }
+    }
+
     updateCamera() {
         let scale = 1;
         if (this.isMobile) {
@@ -488,20 +652,70 @@ class NarwhaleGame {
         this.camera.x += (targetX - this.camera.x) * 0.1;
         this.camera.y += (targetY - this.camera.y) * 0.1;
         
-        // Smooth bounds clamping accounting for screen scale so camera does not jump or clip
-        const halfW = (this.canvas.width / 2);
-        const halfH = (this.canvas.height / 2);
-        const minCamX = halfW * (1 / scale - 1);
-        const maxCamX = CONFIG.WORLD_WIDTH - (this.canvas.width / scale) + halfW * (1 / scale - 1);
-        const minCamY = halfH * (1 / scale - 1);
-        const maxCamY = CONFIG.WORLD_HEIGHT - (this.canvas.height / scale) + halfH * (1 / scale - 1);
-        
-        if (maxCamX >= minCamX) {
-            this.camera.x = Math.max(minCamX, Math.min(this.camera.x, maxCamX));
+        this.clampCamera(scale);
+    }
+
+    updatePreviewCamera(deltaTime = 16) {
+        let scale = 1;
+        if (this.isMobile) {
+            const smallerDimension = Math.min(window.innerWidth, window.innerHeight);
+            scale = smallerDimension < 400 ? CONFIG.MOBILE_CAMERA_SCALE * 0.8 : CONFIG.MOBILE_CAMERA_SCALE;
+            this.camera.scale = scale;
         }
-        if (maxCamY >= minCamY) {
-            this.camera.y = Math.max(minCamY, Math.min(this.camera.y, maxCamY));
+
+        const now = performance.now();
+        this.previewSwitchTimer = (this.previewSwitchTimer || 0) + deltaTime;
+
+        let targetX = CONFIG.WORLD_WIDTH / 2;
+        let targetY = CONFIG.WORLD_HEIGHT / 2;
+        let foundEntity = false;
+
+        const previewPresences = this.getPreviewPresences();
+
+        if (this.previewMode === 'ai') {
+            const aiKeys = Object.keys(previewPresences).filter(k => k.startsWith('ai-') && previewPresences[k]?.isAlive);
+            if (aiKeys.length > 0) {
+                if (!this.previewTargetId || !previewPresences[this.previewTargetId]?.isAlive || this.previewSwitchTimer > 7000) {
+                    this.previewSwitchTimer = 0;
+                    this.previewTargetId = aiKeys[Math.floor(Math.random() * aiKeys.length)];
+                }
+                const targetEntity = previewPresences[this.previewTargetId];
+                if (targetEntity && targetEntity.x !== undefined && targetEntity.y !== undefined) {
+                    targetX = targetEntity.x;
+                    targetY = targetEntity.y;
+                    foundEntity = true;
+                }
+            }
+        } else {
+            const humanKeys = Object.keys(previewPresences).filter(k => !k.startsWith('ai-') && previewPresences[k]?.isAlive);
+            if (humanKeys.length > 0) {
+                if (!this.previewTargetId || !previewPresences[this.previewTargetId]?.isAlive || this.previewSwitchTimer > 8000) {
+                    this.previewSwitchTimer = 0;
+                    this.previewTargetId = humanKeys[Math.floor(Math.random() * humanKeys.length)];
+                }
+                const targetEntity = previewPresences[this.previewTargetId];
+                if (targetEntity && targetEntity.x !== undefined && targetEntity.y !== undefined) {
+                    targetX = targetEntity.x;
+                    targetY = targetEntity.y;
+                    foundEntity = true;
+                }
+            }
         }
+
+        if (!foundEntity) {
+            // Ambient cinematic glide around scenic coral reef zones
+            const t = now * 0.00045;
+            targetX = 1250 + Math.sin(t) * 450;
+            targetY = 1250 + Math.cos(t * 0.75) * 350;
+        }
+
+        const desiredCamX = targetX - (this.canvas.width / 2);
+        const desiredCamY = targetY - (this.canvas.height / 2);
+
+        this.camera.x += (desiredCamX - this.camera.x) * 0.06;
+        this.camera.y += (desiredCamY - this.camera.y) * 0.06;
+
+        this.clampCamera(scale);
     }
 
     generateBubbles(count) {
@@ -563,19 +777,20 @@ class NarwhaleGame {
             if (clientId.startsWith('ai-')) {
                 continue;
             }
-            if (clientId !== this.room.clientId && (!this.creature || clientId !== this.creature.id)) {
-                const presence = this.playerPresences[clientId];
-                const name = this.room.peers[clientId]?.username || presence?.name || "Player";
-                const kills = (this.room.peers[clientId]?.kills !== undefined ? this.room.peers[clientId].kills : presence?.kills) || 0;
-                
-                players.push({
-                    id: clientId,
-                    name: name,
-                    kills: kills,
-                    isLocal: false,
-                    isAI: false
-                });
+            const presence = this.playerPresences[clientId];
+            if (this.isSelf(clientId, presence)) {
+                continue;
             }
+            const name = this.room.peers[clientId]?.username || presence?.name || "Player";
+            const kills = (this.room.peers[clientId]?.kills !== undefined ? this.room.peers[clientId].kills : presence?.kills) || 0;
+            
+            players.push({
+                id: clientId,
+                name: name,
+                kills: kills,
+                isLocal: false,
+                isAI: false
+            });
         }
         
         players.sort((a, b) => b.kills - a.kills);

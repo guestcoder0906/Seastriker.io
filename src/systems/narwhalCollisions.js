@@ -12,11 +12,9 @@ export class NarwhalCollisions {
         if (!narwhal.isAlive) return;
         
         for (const clientId in otherPresences) {
-            // Skip self
-            if (clientId === narwhal.id) continue;
-            if (this.game.creature && narwhal === this.game.creature && (clientId === this.game.room.clientId || clientId === this.game.creature.id)) continue;
-            
             const otherNarwhal = otherPresences[clientId];
+            // Skip self completely
+            if (this.game.isSelf ? this.game.isSelf(clientId, otherNarwhal) : (clientId === narwhal.id || (this.game.creature && (clientId === this.game.room.clientId || clientId === this.game.creature.id)))) continue;
             
             // Skip if other narwhal is not alive or doesn't have segments
             if (!otherNarwhal || !otherNarwhal.isAlive || !otherNarwhal.segments) continue;
@@ -77,9 +75,9 @@ export class NarwhalCollisions {
         }
         
         for (const clientId in otherPresences) {
-            // Skip self
-            if (clientId === narwhal.id) continue;
-            if (this.game.creature && narwhal === this.game.creature && (clientId === this.game.room.clientId || clientId === this.game.creature.id)) continue;
+            const otherNarwhal = otherPresences[clientId];
+            // Skip self completely
+            if (this.game.isSelf ? this.game.isSelf(clientId, otherNarwhal) : (clientId === narwhal.id || (this.game.creature && (clientId === this.game.room.clientId || clientId === this.game.creature.id)))) continue;
             
             // Check for cooldown on this specific collision pair
             const collisionPairId = `${narwhal.id}-${clientId}`;
@@ -87,8 +85,6 @@ export class NarwhalCollisions {
                 performance.now() - this.recentCollisions[collisionPairId] < CONFIG.COLLISION_COOLDOWN) {
                 continue; // Skip this collision check if in cooldown
             }
-            
-            const otherNarwhal = otherPresences[clientId];
             
             // Skip if other narwhal is not alive or doesn't have segments
             if (!otherNarwhal || !otherNarwhal.isAlive || !otherNarwhal.segments) continue;

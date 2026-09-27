@@ -214,9 +214,8 @@ export class Shark extends Creature {
         if (!this.isAlive || !playerPresences) return;
 
         for (const clientId in playerPresences) {
-            if (clientId === this.id) continue;
-
             const otherCreature = playerPresences[clientId];
+            if (clientId === this.id || (typeof window !== 'undefined' && window.game?.isSelf && window.game.isSelf(clientId, otherCreature))) continue;
             if (!otherCreature || !otherCreature.isAlive || !otherCreature.segments) continue;
 
             // Push other segments of shark away if overlapping
@@ -255,15 +254,14 @@ export class Shark extends Creature {
         const snoutY = this.segments[0].y + Math.sin(facingAngle) * snoutDist;
         
         for (const clientId in playerPresences) {
+            const otherCreature = playerPresences[clientId];
             // Skip self
-            if (clientId === this.id) continue;
+            if (clientId === this.id || (typeof window !== 'undefined' && window.game?.isSelf && window.game.isSelf(clientId, otherCreature))) continue;
             
             // Check for cooldown on this specific collision pair (1 second)
             if (this.recentCollisions && this.recentCollisions[clientId] && (now - this.recentCollisions[clientId] < (CONFIG.COLLISION_COOLDOWN || 1000))) {
                 continue;
             }
-            
-            const otherCreature = playerPresences[clientId];
             
             // Skip if other creature is not alive or doesn't have segments
             if (!otherCreature || !otherCreature.isAlive || !otherCreature.segments) continue;

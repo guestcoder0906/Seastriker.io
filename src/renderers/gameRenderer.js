@@ -126,12 +126,14 @@ export class GameRenderer {
         
         // Draw other players (skip local player)
         for (const clientId in playerPresences) {
-            if (clientId === this.game.room?.clientId || (narwhal && clientId === narwhal.id)) {
+            const presence = playerPresences[clientId];
+            if (!presence || !presence.isAlive) {
                 continue;
             }
-            if (playerPresences[clientId] && playerPresences[clientId].isAlive) {
-                this.drawCreatureByType(ctx, playerPresences[clientId]);
+            if (this.game.isSelf ? this.game.isSelf(clientId, presence) : (clientId === this.game.room?.clientId || (narwhal && clientId === narwhal.id))) {
+                continue;
             }
+            this.drawCreatureByType(ctx, presence);
         }
         
         // Draw local player if it exists
@@ -205,16 +207,50 @@ export class GameRenderer {
     }
 
     drawNetworkHUD(ctx) {
-        if (!this.game.gameActive) return;
         ctx.save();
         const isOnline = this.game.room && (this.game.room.isServerConnected || this.game.room.isP2PConnected || this.game.room.isBroadcastActive);
         const isConnecting = this.game.room && this.game.room.isConnecting && !isOnline;
         const realCount = this.game.room?.getRealPlayerCount 
             ? this.game.room.getRealPlayerCount() 
             : Math.max(1, Object.keys(this.game.room?.peers || {}).filter(id => !id.startsWith('ai-')).length);
+        const botCount = this.game.room?.getAIBotCount ? this.game.room.getAIBotCount() : 6;
+
+        if (!this.game.gameActive) {
+            // Live Preview Watermark Indicator on Menu Background
+            const isAiPreview = this.game.previewMode === 'ai';
+            ctx.font = 'bold 12px "Segoe UI", Arial, sans-serif';
+            ctx.textAlign = 'left';
+            
+            // Badge background
+            ctx.fillStyle = 'rgba(15, 23, 42, 0.75)';
+            const tagText = isAiPreview 
+                ? `🎥 LIVE PREVIEW: PLAY WITH AI (${botCount} Wildlife Bots)` 
+                : `🎥 LIVE PREVIEW: GLOBAL MULTIPLAYER (${realCount} Real Players)`;
+            const textWidth = ctx.measureText(tagText).width;
+            
+            if (typeof ctx.roundRect === 'function') {
+                ctx.beginPath();
+                ctx.roundRect(14, 14, textWidth + 30, 26, 13);
+                ctx.fill();
+            } else {
+                ctx.fillRect(14, 14, textWidth + 30, 26);
+            }
+
+            // Dot
+            ctx.fillStyle = isAiPreview ? '#c084fc' : '#38bdf8';
+            ctx.beginPath();
+            ctx.arc(28, 27, 4.5, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Text
+            ctx.fillStyle = '#ffffff';
+            ctx.fillText(tagText, 38, 31);
+            ctx.restore();
+            return;
+        }
 
         ctx.font = '12px "Segoe UI", Arial, sans-serif';
-        ctx.fillStyle = isConnecting ? '#f59e0b' : '#22c55e';
+        ctx.fillStyle = isConnecting ? '#f59e0b' : (this.game.gameMode === 'ai' ? '#a855f7' : '#22c55e');
         ctx.beginPath();
         ctx.arc(20, 20, 4, 0, Math.PI * 2);
         ctx.fill();
@@ -223,11 +259,13 @@ export class GameRenderer {
         ctx.textAlign = 'left';
         let label = 'Connecting...';
         if (isConnecting) {
-            label = 'Connecting to Multiplayer Ocean...';
+            label = 'Connecting to Ocean...';
+        } else if (this.game.gameMode === 'ai') {
+            label = `🤖 AI Arena (${botCount} Wildlife Bots)`;
         } else if (realCount === 1) {
-            label = 'Multiplayer Online (1 Player (online))';
+            label = '🌐 Global Multiplayer (1 Player Online • Real Players Only)';
         } else {
-            label = `Multiplayer Online (${realCount} Players (online))`;
+            label = `🌐 Global Multiplayer (${realCount} Players Online • Real Players Only)`;
         }
         ctx.fillText(label, 30, 24);
         ctx.restore();

@@ -109,10 +109,18 @@ async function startServer() {
     next();
   });
 
+  interface Peer {
+    id: string;
+    username: string;
+    kills: number;
+    gameMode?: "global" | "ai";
+    creatureType?: string;
+  }
+
   let leaderboard = loadLeaderboard();
   let roomState = { globalLeaderboard: leaderboard };
   let presences: Record<string, any> = {};
-  let peers: Record<string, { id: string; username: string; kills: number; creatureType?: string }> = {};
+  let peers: Record<string, Peer> = {};
 
   const io = new Server(httpServer, {
     cors: {
@@ -146,6 +154,11 @@ async function startServer() {
     angle: number;
     targetAngle: number;
     speed: number;
+    baseSpeed: number;
+    dashSpeed: number;
+    isDashing: boolean;
+    dashTimer: number;
+    dashCooldown: number;
     health: number;
     maxHealth: number;
     kills: number;
@@ -185,20 +198,22 @@ async function startServer() {
   }
 
   const initialBotConfigs = [
-    { id: "ai-0", name: "AquaGlider", type: "narwhal", skinId: "default", color: "#38bdf8", x: 700, y: 700, angle: 0.5 },
-    { id: "ai-1", name: "ApexShark", type: "shark", skinId: "default", color: "#64748b", x: 1800, y: 800, angle: 2.2 },
-    { id: "ai-2", name: "WaveRider", type: "dolphin", skinId: "default", color: "#0284c7", x: 900, y: 1700, angle: -1.2 },
-    { id: "ai-3", name: "AbyssSquid", type: "squid", skinId: "default", color: "#ec4899", x: 1900, y: 1900, angle: 3.0 },
-    { id: "ai-4", name: "PhantomFin", type: "knifefish", skinId: "default", color: "#a855f7", x: 1300, y: 1200, angle: 1.0 },
-    { id: "ai-5", name: "HammerheadBot", type: "shark", skinId: "hammerhead", color: "#475569", x: 1600, y: 1500, angle: -2.5 }
+    { id: "ai-0", name: "AquaGlider", type: "narwhal", skinId: "default", color: "#38bdf8", x: 700, y: 700, angle: 0.5, baseSpeed: 15, dashSpeed: 28, maxHealth: 100 },
+    { id: "ai-1", name: "ApexShark", type: "shark", skinId: "default", color: "#64748b", x: 1800, y: 800, angle: 2.2, baseSpeed: 17, dashSpeed: 30, maxHealth: 110 },
+    { id: "ai-2", name: "WaveRider", type: "dolphin", skinId: "default", color: "#0284c7", x: 900, y: 1700, angle: -1.2, baseSpeed: 18, dashSpeed: 31, maxHealth: 95 },
+    { id: "ai-3", name: "AbyssSquid", type: "squid", skinId: "default", color: "#ec4899", x: 1900, y: 1900, angle: 3.0, baseSpeed: 14, dashSpeed: 27, maxHealth: 90 },
+    { id: "ai-4", name: "PhantomFin", type: "knifefish", skinId: "default", color: "#a855f7", x: 1300, y: 1200, angle: 1.0, baseSpeed: 16, dashSpeed: 29, maxHealth: 90 },
+    { id: "ai-5", name: "HammerheadBot", type: "shark", skinId: "hammerhead", color: "#475569", x: 1600, y: 1500, angle: -2.5, baseSpeed: 16.5, dashSpeed: 29.5, maxHealth: 120 }
   ];
 
   const serverBots: ServerBot[] = initialBotConfigs.map(cfg => ({
     ...cfg,
     targetAngle: cfg.angle,
-    speed: 4.2,
-    health: 100,
-    maxHealth: 100,
+    speed: cfg.baseSpeed,
+    isDashing: false,
+    dashTimer: 0,
+    dashCooldown: Math.floor(Math.random() * 30),
+    health: cfg.maxHealth,
     kills: 0,
     isAlive: true,
     respawnTime: 0,
@@ -224,9 +239,9 @@ async function startServer() {
         maxHealth: b.maxHealth,
         kills: b.kills,
         isAlive: b.isAlive,
-        isDashing: false,
-        staminaReady: true,
-        stamina: 1.0
+        isDashing: b.isDashing,
+        staminaReady: b.dashCooldown <= 0,
+        stamina: b.dashCooldown > 0 ? 0.3 : 1.0
       };
     }
     return formatted;
@@ -240,21 +255,28 @@ async function startServer() {
       if (!bot.isAlive) {
         if (bot.respawnTime > 0 && now >= bot.respawnTime) {
           bot.isAlive = true;
-          bot.health = 100;
+          bot.health = bot.maxHealth;
           bot.x = 400 + Math.random() * 1700;
           bot.y = 400 + Math.random() * 1700;
           bot.angle = Math.random() * Math.PI * 2;
           bot.targetAngle = bot.angle;
+          bot.isDashing = false;
+          bot.dashTimer = 0;
+          bot.dashCooldown = 20;
           bot.segments = createBotSegments(bot.type, bot.x, bot.y, bot.angle);
         }
         continue;
       }
 
-      // Find nearest alive human player to hunt or avoid
-      let nearestDist = 800;
+      // Find nearest alive human player or rival bot to hunt
+      let nearestDist = 950;
       let targetX = -1;
       let targetY = -1;
-      for (const p of Object.values(presences)) {
+
+      // 1. Prioritize nearby human players who are in 'ai' game mode (bots never hunt real global players)
+      for (const sid in presences) {
+        if (peers[sid]?.gameMode !== "ai") continue;
+        const p = presences[sid];
         if (p && p.isAlive && p.x !== undefined && p.y !== undefined) {
           const d = Math.hypot(p.x - bot.x, p.y - bot.y);
           if (d < nearestDist) {
@@ -265,59 +287,164 @@ async function startServer() {
         }
       }
 
-      bot.turnTimer += 50;
-      if (targetX !== -1 && targetY !== -1) {
-        // Steer toward player
-        bot.targetAngle = Math.atan2(targetY - bot.y, targetX - bot.x);
-      } else if (bot.turnTimer > 2000) {
-        bot.turnTimer = 0;
-        bot.targetAngle += (Math.random() - 0.5) * 1.2;
+      // 2. If no human player within range, hunt the nearest other bot
+      if (targetX === -1) {
+        let nearestBotDist = 750;
+        for (const otherBot of serverBots) {
+          if (otherBot.id !== bot.id && otherBot.isAlive) {
+            const d = Math.hypot(otherBot.x - bot.x, otherBot.y - bot.y);
+            if (d < nearestBotDist) {
+              nearestBotDist = d;
+              targetX = otherBot.x;
+              targetY = otherBot.y;
+              nearestDist = d;
+            }
+          }
+        }
       }
 
-      // Turn smoothly
+      // Steering & Behavior
+      bot.turnTimer += 50;
+      if (targetX !== -1 && targetY !== -1) {
+        // Steer towards target
+        bot.targetAngle = Math.atan2(targetY - bot.y, targetX - bot.x);
+
+        // Aggressive Dash: When close and lined up, launch dash attack
+        let angleDiff = bot.targetAngle - bot.angle;
+        while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+        while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+
+        if (nearestDist < 380 && bot.dashCooldown <= 0 && Math.abs(angleDiff) < 0.65) {
+          bot.isDashing = true;
+          bot.dashTimer = 7; // ~350ms sprint burst
+          bot.dashCooldown = 45 + Math.floor(Math.random() * 25); // 2.5 - 3.5s cooldown
+        }
+      } else if (bot.turnTimer > 1500) {
+        bot.turnTimer = 0;
+        bot.targetAngle += (Math.random() - 0.5) * 1.4;
+      }
+
+      // Update Dash State
+      if (bot.dashTimer > 0) {
+        bot.dashTimer--;
+        bot.isDashing = true;
+        bot.speed = bot.dashSpeed;
+      } else {
+        bot.isDashing = false;
+        bot.speed = bot.baseSpeed;
+      }
+      if (bot.dashCooldown > 0) {
+        bot.dashCooldown--;
+      }
+
+      // Turn smoothly and responsively
       let angleDiff = bot.targetAngle - bot.angle;
       while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
       while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
-      const turnSpeed = 0.08;
+      const turnSpeed = bot.isDashing ? 0.12 : 0.22;
       bot.angle += Math.max(-turnSpeed, Math.min(turnSpeed, angleDiff));
 
-      // Avoid walls
-      const margin = 200;
-      if (bot.x < margin) bot.targetAngle = 0;
-      else if (bot.x > 2500 - margin) bot.targetAngle = Math.PI;
-      else if (bot.y < margin) bot.targetAngle = Math.PI / 2;
-      else if (bot.y > 2500 - margin) bot.targetAngle = -Math.PI / 2;
+      // Arena Wall Boundary Avoidance (smooth cushion towards center)
+      const margin = 280;
+      if (bot.x < margin || bot.x > 2500 - margin || bot.y < margin || bot.y > 2500 - margin) {
+        const toCenterX = 1250 - bot.x;
+        const toCenterY = 1250 - bot.y;
+        bot.targetAngle = Math.atan2(toCenterY, toCenterX);
+      }
 
-      // Move head
+      // Move Head
       bot.x += Math.cos(bot.angle) * bot.speed;
       bot.y += Math.sin(bot.angle) * bot.speed;
-      bot.x = Math.max(100, Math.min(2400, bot.x));
-      bot.y = Math.max(100, Math.min(2400, bot.y));
+      bot.x = Math.max(90, Math.min(2410, bot.x));
+      bot.y = Math.max(90, Math.min(2410, bot.y));
 
       bot.segments[0].x = bot.x;
       bot.segments[0].y = bot.y;
       bot.segments[0].angle = bot.angle;
 
       // Kinematics for trailing segments
+      const spacing = 13.5;
       for (let i = 1; i < bot.segments.length; i++) {
         const prev = bot.segments[i - 1];
         const cur = bot.segments[i];
         const dx = prev.x - cur.x;
         const dy = prev.y - cur.y;
         const ang = Math.atan2(dy, dx);
-        const spacing = 13;
         cur.x = prev.x - Math.cos(ang) * spacing;
         cur.y = prev.y - Math.sin(ang) * spacing;
         cur.angle = ang;
       }
+
+      // Check combat: If dashing bot hits a player in AI mode, deal damage
+      if (bot.isDashing && bot.dashTimer >= 2) {
+        for (const [sid, sock] of io.of("/").sockets) {
+          if (peers[sid]?.gameMode !== "ai") continue; // Bots only attack in AI mode
+          const p = presences[sid];
+          if (p && p.isAlive && p.x !== undefined && p.y !== undefined) {
+            const headDist = Math.hypot(p.x - bot.x, p.y - bot.y);
+            if (headDist < 58) {
+              sock.emit("takeDamage", {
+                damage: 20,
+                attackerId: bot.id,
+                attackerName: bot.name,
+                knockbackAngle: bot.angle,
+                knockbackForce: 7
+              });
+              bot.dashTimer = 0; // consume dash attack on hit
+            }
+          }
+        }
+      }
     }
 
-    // Broadcast synchronized network snapshot
-    io.emit("networkTick", {
-      players: presences,
-      bots: formatBots(serverBots),
-      peers
-    });
+    // Broadcast synchronized network snapshot separated by mode, plus live preview data
+    const formattedBots = formatBots(serverBots);
+
+    const globalPlayers: Record<string, any> = {};
+    const aiPlayers: Record<string, any> = {};
+
+    for (const sid in presences) {
+      const p = presences[sid];
+      if (!p) continue;
+      const entityId = p.id || sid;
+      if (peers[sid]?.gameMode === "ai") {
+        aiPlayers[entityId] = p;
+      } else {
+        globalPlayers[entityId] = p;
+      }
+    }
+
+    for (const [sid, sock] of io.of("/").sockets) {
+      const myMode = peers[sid]?.gameMode || "global";
+      const myId = peers[sid]?.id;
+
+      const otherPlayers: Record<string, any> = {};
+      const source = myMode === "ai" ? aiPlayers : globalPlayers;
+      for (const id in source) {
+        if (id !== sid && id !== myId) {
+          otherPlayers[id] = source[id];
+        }
+      }
+
+      // Filter peers by current mode
+      const modePeers: Record<string, any> = {};
+      for (const psid in peers) {
+        if ((peers[psid]?.gameMode || "global") === myMode) {
+          modePeers[psid] = peers[psid];
+        }
+      }
+
+      sock.emit("networkTick", {
+        mode: myMode,
+        players: otherPlayers,
+        bots: myMode === "ai" ? formattedBots : {},
+        peers: modePeers,
+        preview: {
+          globalPlayers,
+          aiBots: formattedBots
+        }
+      });
+    }
   }, 50);
 
   // REST API Endpoints for global leaderboard
@@ -382,10 +509,13 @@ async function startServer() {
   });
 
   app.get("/api/status", (req, res) => {
-    const realPlayersCount = Object.values(peers).filter(p => p && p.id && !p.id.startsWith("ai-")).length;
+    const globalCount = Object.values(peers).filter(p => p && p.id && !p.id.startsWith("ai-") && (p.gameMode || "global") === "global").length;
+    const aiCount = Object.values(peers).filter(p => p && p.id && !p.id.startsWith("ai-") && p.gameMode === "ai").length;
     res.json({
       online: true,
-      playersCount: Math.max(1, realPlayersCount),
+      playersCount: Math.max(1, globalCount),
+      globalPlayersCount: Math.max(1, globalCount),
+      aiPlayersCount: aiCount,
       serverBotsCount: serverBots.length
     });
   });
@@ -406,20 +536,53 @@ async function startServer() {
       (socket.handshake.auth && socket.handshake.auth.username) ||
       "Player_" + Math.floor(100 + Math.random() * 900);
     const peerClientId = (socket.handshake.auth && socket.handshake.auth.clientId) || socket.id;
+    const initialMode = (socket.handshake.auth && socket.handshake.auth.gameMode) === "ai" ? "ai" : "global";
 
-    peers[socket.id] = { id: peerClientId, username: clientUsername, kills: 0 };
+    peers[socket.id] = { id: peerClientId, username: clientUsername, kills: 0, gameMode: initialMode };
 
     // Send init packet immediately
     socket.emit("init", {
       id: peerClientId,
       roomState,
       peers,
-      bots: formatBots(serverBots)
+      mode: initialMode,
+      bots: initialMode === "ai" ? formatBots(serverBots) : {},
+      preview: {
+        globalPlayers: Object.fromEntries(Object.entries(presences).filter(([sid]) => peers[sid]?.gameMode !== "ai")),
+        aiBots: formatBots(serverBots)
+      }
     });
 
-    // Notify all peers of new player
+    // Notify peers of new player
     io.emit("peerJoined", peers[socket.id]);
-    socket.emit("presence", presences);
+    const initialOtherPresences: Record<string, any> = {};
+    for (const otherSid in presences) {
+      if (otherSid !== socket.id && presences[otherSid]?.id !== peerClientId) {
+        if ((peers[otherSid]?.gameMode || "global") === initialMode) {
+          initialOtherPresences[otherSid] = presences[otherSid];
+        }
+      }
+    }
+    socket.emit("presence", initialOtherPresences);
+
+    // Switch game mode between Global Multiplayer and Play with AI
+    socket.on("setGameMode", (data) => {
+      const mode: "global" | "ai" = data?.mode === "ai" ? "ai" : "global";
+      if (peers[socket.id]) {
+        peers[socket.id].gameMode = mode;
+      }
+
+      // Send the presences appropriate for this mode
+      const modePresences: Record<string, any> = {};
+      for (const otherSid in presences) {
+        if (otherSid !== socket.id && presences[otherSid]?.id !== peerClientId) {
+          if ((peers[otherSid]?.gameMode || "global") === mode) {
+            modePresences[otherSid] = presences[otherSid];
+          }
+        }
+      }
+      socket.emit("presence", modePresences);
+    });
 
     // Real-time presence updates (movement, angle, segments, etc.)
     socket.on("updatePresence", (data) => {
@@ -432,11 +595,22 @@ async function startServer() {
       }
     });
 
+    function broadcastModeEvent(mode: "global" | "ai", eventName: string, payload: any) {
+      for (const [sid, sock] of io.of("/").sockets) {
+        if ((peers[sid]?.gameMode || "global") === mode) {
+          sock.emit(eventName, payload);
+        }
+      }
+    }
+
     // Player attacks another human player
     socket.on("attackPlayer", (data) => {
       if (!data || !data.targetId || data.targetId === socket.id || data.targetId === peerClientId) return;
       const targetSocketId = findTargetSocketId(data.targetId);
       if (!targetSocketId) return;
+
+      const myMode = peers[socket.id]?.gameMode || "global";
+      if ((peers[targetSocketId]?.gameMode || "global") !== myMode) return;
 
       io.to(targetSocketId).emit("takeDamage", {
         attackerId: peerClientId,
@@ -470,7 +644,7 @@ async function startServer() {
           }
 
           socket.emit("killAwarded", { victimName: bot.name, kills: currentKills });
-          io.emit("killBroadcast", {
+          broadcastModeEvent(peers[socket.id]?.gameMode || "ai", "killBroadcast", {
             killerId: peerClientId,
             killerName: peers[socket.id].username,
             victimId: bot.id,
@@ -488,6 +662,7 @@ async function startServer() {
         presences[socket.id].isAlive = false;
       }
 
+      const myMode = peers[socket.id]?.gameMode || "global";
       const killerId = data?.killerId;
       if (killerId) {
         const killerSocketId = findTargetSocketId(killerId);
@@ -503,7 +678,7 @@ async function startServer() {
             kills: currentKills
           });
 
-          io.emit("killBroadcast", {
+          broadcastModeEvent(myMode, "killBroadcast", {
             killerId: peers[killerSocketId].id || killerSocketId,
             killerName: peers[killerSocketId].username,
             victimId: peerClientId,
@@ -628,11 +803,6 @@ async function startServer() {
       delete presences[socket.id];
 
       io.emit("peerLeft", socket.id);
-      io.emit("networkTick", {
-        players: presences,
-        bots: formatBots(serverBots),
-        peers
-      });
     });
   });
 

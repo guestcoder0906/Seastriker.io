@@ -1,18 +1,41 @@
 import { io } from "socket.io-client";
-import { joinRoom as joinMqttRoom, selfId as mqttSelfId } from "@trystero-p2p/mqtt";
 import { joinRoom as joinTorrentRoom, selfId as torrentSelfId } from "@trystero-p2p/torrent";
 
-// Dedicated WebSocket Proxies (MQTT & WebTorrent) for real-time global connectivity on Vercel & serverless deployments
-const DEDICATED_MQTT_BROKERS = [
-    'wss://broker.emqx.io:8084/mqtt',
-    'wss://test.mosquitto.org:8081/mqtt',
-    'wss://broker.hivemq.com:8884/mqtt',
-    'wss://public.cloud.shiftr.io'
-];
+// Suppress transient external network errors like connack timeout
+if (typeof window !== 'undefined') {
+    const isNetworkTransientError = (msg) => {
+        if (!msg) return false;
+        const str = String(msg).toLowerCase();
+        return str.includes('connack') || 
+               str.includes('mqtt') || 
+               (str.includes('timeout') && str.includes('connect')) ||
+               str.includes('webtorrent tracker') ||
+               str.includes('websocket is closed');
+    };
 
+    window.addEventListener('error', (event) => {
+        if (isNetworkTransientError(event.message) || isNetworkTransientError(event.error?.message)) {
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            return true;
+        }
+    }, true);
+
+    window.addEventListener('unhandledrejection', (event) => {
+        const reasonMsg = event.reason?.message || event.reason;
+        if (isNetworkTransientError(reasonMsg)) {
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            return true;
+        }
+    }, true);
+}
+
+// Dedicated WebSocket Trackers for WebTorrent P2P real-time mesh
 const DEDICATED_TORRENT_TRACKERS = [
     'wss://tracker.openwebtorrent.com',
-    'wss://tracker.webtorrent.dev'
+    'wss://tracker.webtorrent.dev',
+    'wss://tracker.files.fm:7073/announce'
 ];
 
 function bindAction(room, actionName) {
@@ -65,7 +88,7 @@ function bindAction(room, actionName) {
 export class WebsimSocket {
     constructor() {
         const savedClientId = typeof localStorage !== 'undefined' ? localStorage.getItem('ocean_player_id') : null;
-        this.clientId = savedClientId || mqttSelfId || torrentSelfId || ("player_" + Math.random().toString(36).substring(2, 9) + "_" + Math.floor(Math.random() * 1000));
+        this.clientId = savedClientId || torrentSelfId || ("player_" + Math.random().toString(36).substring(2, 9) + "_" + Math.floor(Math.random() * 1000));
         try { localStorage.setItem('ocean_player_id', this.clientId); } catch (e) {}
 
         this.username = "Player";
@@ -77,6 +100,8 @@ export class WebsimSocket {
             }
         };
         this.localPresences = {};
+        this.previewData = { globalPlayers: {}, aiBots: {} };
+        this.gameMode = 'global';
         this.presenceCallbacks = [];
         this.presenceRequestCallbacks = [];
         this.damageCallbacks = [];
@@ -112,6 +137,18 @@ export class WebsimSocket {
         this.initBroadcastChannel();
     }
 
+    isSelf(id, presence) {
+        if (!id && !presence) return false;
+        if (id && (id === this.clientId || id === this.socket?.id || id === this.socketId)) return true;
+        if (presence) {
+            if (presence.id && (presence.id === this.clientId || presence.id === this.socket?.id || presence.id === this.socketId)) return true;
+            if (typeof window !== 'undefined' && window.game?.creature) {
+                if (id === window.game.creature.id || presence.id === window.game.creature.id) return true;
+            }
+        }
+        return false;
+    }
+
     initBroadcastChannel() {
         if (typeof window === 'undefined' || !('BroadcastChannel' in window)) return;
         try {
@@ -119,7 +156,7 @@ export class WebsimSocket {
             this.isBroadcastActive = true;
             this.broadcastChannel.onmessage = (event) => {
                 const msg = event.data;
-                if (!msg || !msg.type || msg.fromId === this.clientId) return;
+                if (!msg || !msg.type || this.isSelf(msg.fromId)) return;
 
                 if (msg.type === 'peerJoined') {
                     this.peers[msg.fromId] = {
@@ -148,9 +185,9 @@ export class WebsimSocket {
                     for (const cb of this.presenceCallbacks) cb(this.localPresences);
                 } else if (msg.type === 'presence') {
                     this.handleIncomingPresence(msg.fromId, msg.data);
-                } else if (msg.type === 'attackPlayer' && msg.targetId === this.clientId) {
+                } else if (msg.type === 'attackPlayer' && (msg.targetId === this.clientId || msg.targetId === this.socketId)) {
                     this.handleIncomingDamage(msg.data);
-                } else if (msg.type === 'presenceUpdateRequest' && msg.targetId === this.clientId) {
+                } else if (msg.type === 'presenceUpdateRequest' && (msg.targetId === this.clientId || msg.targetId === this.socketId)) {
                     for (const cb of this.presenceRequestCallbacks) {
                         cb(msg.data.updateRequest, msg.fromId);
                     }
@@ -224,7 +261,8 @@ export class WebsimSocket {
                 this.socket = io(targetUrl, {
                     auth: { 
                         username: this.username,
-                        clientId: this.clientId 
+                        clientId: this.clientId,
+                        gameMode: this.gameMode
                     },
                     transports: ['websocket', 'polling'],
                     reconnection: true,
@@ -234,17 +272,14 @@ export class WebsimSocket {
 
                 this.socket.on('connect', () => {
                     this.isServerConnected = true;
+                    this.socketId = this.socket.id;
                     if (this.socket.id) {
-                        const oldId = this.clientId;
-                        this.clientId = this.socket.id;
-                        if (oldId && oldId !== this.clientId) {
-                            delete this.peers[oldId];
-                            delete this.localPresences[oldId];
-                        }
-                        this.peers[this.clientId] = { id: this.clientId, username: this.username, kills: 0 };
-                        if (typeof window !== 'undefined' && window.game && window.game.creature) {
-                            window.game.creature.id = this.clientId;
-                        }
+                        delete this.peers[this.socket.id];
+                        delete this.localPresences[this.socket.id];
+                    }
+                    this.peers[this.clientId] = { id: this.clientId, username: this.username, kills: 0 };
+                    if (typeof window !== 'undefined' && window.game && window.game.creature) {
+                        window.game.creature.id = this.clientId;
                     }
                     this.notifyStatus();
                     resolve();
@@ -252,22 +287,25 @@ export class WebsimSocket {
 
                 this.socket.on('init', (data) => {
                     this.isServerConnected = true;
-                    if (data.id) {
+                    if (data.id && !this.clientId) {
                         this.clientId = data.id;
-                        if (typeof window !== 'undefined' && window.game && window.game.creature) {
-                            window.game.creature.id = this.clientId;
-                        }
+                    }
+                    if (typeof window !== 'undefined' && window.game && window.game.creature) {
+                        window.game.creature.id = this.clientId;
                     }
                     if (data.roomState) this.roomState = data.roomState;
                     if (data.peers) {
                         for (const pid in data.peers) {
-                            if (!pid.startsWith('ai-')) {
+                            if (!pid.startsWith('ai-') && !this.isSelf(pid, data.peers[pid])) {
                                 this.peers[pid] = data.peers[pid];
                             }
                         }
                     }
+                    if (data.preview) {
+                        this.previewData = data.preview;
+                    }
                     if (data.bots) {
-                        this.localPresences = { ...data.bots, ...this.localPresences };
+                        this.localPresences = { ...data.bots };
                     }
                     this.notifyStatus();
                     resolve();
@@ -275,21 +313,41 @@ export class WebsimSocket {
 
                 this.socket.on('networkTick', (data) => {
                     if (!data) return;
+                    if (data.mode) {
+                        this.gameMode = data.mode;
+                    }
+                    if (data.preview) {
+                        this.previewData = data.preview;
+                    }
                     if (data.peers) {
                         for (const pid in data.peers) {
-                            if (!pid.startsWith('ai-')) {
+                            if (!pid.startsWith('ai-') && !this.isSelf(pid, data.peers[pid])) {
                                 this.peers[pid] = data.peers[pid];
                             }
                         }
                     }
-                    const combined = { ...(data.bots || {}), ...(data.players || {}) };
+                    const combined = { ...(data.bots || {}) };
+                    if (data.players) {
+                        for (const pid in data.players) {
+                            const p = data.players[pid];
+                            if (this.isSelf(pid, p)) continue;
+                            combined[pid] = p;
+                        }
+                    }
                     this.localPresences = combined;
                     for (const cb of this.presenceCallbacks) cb(combined);
                     this.notifyStatus();
                 });
 
                 this.socket.on('presence', (presences) => {
-                    this.localPresences = { ...this.localPresences, ...presences };
+                    if (!presences) return;
+                    const filtered = {};
+                    for (const pid in presences) {
+                        if (!this.isSelf(pid, presences[pid])) {
+                            filtered[pid] = presences[pid];
+                        }
+                    }
+                    this.localPresences = { ...this.localPresences, ...filtered };
                     for (const cb of this.presenceCallbacks) cb(this.localPresences);
                 });
 
@@ -333,23 +391,15 @@ export class WebsimSocket {
         const appId = 'seastriker-ocean-global-2026';
         const roomId = 'ocean-main-arena';
 
-        // 1. Try Dedicated WebSocket MQTT Proxies (works everywhere, ideal for Vercel)
+        // Connect directly via WebTorrent P2P WebSocket Trackers (no MQTT connack timeouts)
         try {
-            this.p2pRoom = joinMqttRoom({
+            this.p2pRoom = joinTorrentRoom({
                 appId,
-                relayUrls: DEDICATED_MQTT_BROKERS
+                trackerUrls: DEDICATED_TORRENT_TRACKERS
             }, roomId);
-        } catch (e) {
-            console.warn('[Network] MQTT proxy room failed, falling back to WebTorrent:', e);
-            try {
-                this.p2pRoom = joinTorrentRoom({
-                    appId,
-                    trackerUrls: DEDICATED_TORRENT_TRACKERS
-                }, roomId);
-            } catch (err) {
-                console.error('[Network] All P2P signaling failed:', err);
-                return;
-            }
+        } catch (err) {
+            console.warn('[Network] P2P signaling failed:', err);
+            return;
         }
 
         if (!this.p2pRoom) return;
@@ -446,6 +496,7 @@ export class WebsimSocket {
 
     handleIncomingPresence(peerId, data) {
         if (!data || peerId.startsWith('ai-')) return;
+        if (this.isSelf(peerId, data)) return;
         data.id = peerId;
         data.name = this.peers[peerId]?.username || data.name || 'Player';
         this.localPresences[peerId] = data;
@@ -527,10 +578,29 @@ export class WebsimSocket {
 
     // Count of AI bots / ocean wildlife (distinct from real players)
     getAIBotCount() {
+        if (this.previewData?.aiBots) {
+            return Object.keys(this.previewData.aiBots).length;
+        }
         if (typeof window !== 'undefined' && window.game?.aiController?.aiPlayers) {
             return Object.keys(window.game.aiController.aiPlayers).length;
         }
         return 6;
+    }
+
+    setGameMode(mode) {
+        this.gameMode = mode === 'ai' ? 'ai' : 'global';
+        if (this.socket && this.isServerConnected) {
+            this.socket.emit('setGameMode', { mode: this.gameMode });
+        }
+        this.notifyStatus();
+    }
+
+    getPreviewPresences(mode) {
+        const targetMode = mode || this.gameMode;
+        if (targetMode === 'ai') {
+            return this.previewData?.aiBots || {};
+        }
+        return this.previewData?.globalPlayers || {};
     }
 
     notifyStatus() {
