@@ -85,9 +85,6 @@ export class SkinsScreen {
         skins.forEach(skin => {
             const skinCard = document.createElement('div');
             skinCard.className = 'skin-card';
-            if (!skin.unlocked) {
-                skinCard.classList.add('locked');
-            }
             if (skin.selected) {
                 skinCard.classList.add('selected');
             }
@@ -98,7 +95,7 @@ export class SkinsScreen {
             
             const freeBadge = document.createElement('span');
             freeBadge.className = 'free-badge';
-            freeBadge.textContent = '[FREE]';
+            freeBadge.textContent = '[AVAILABLE]';
             freeBadge.style.color = '#00ff88';
             freeBadge.style.fontSize = '12px';
             skinName.appendChild(freeBadge);
@@ -110,28 +107,18 @@ export class SkinsScreen {
             skinDescription.textContent = skin.description;
             skinCard.appendChild(skinDescription);
             
-            if (skin.unlockRequirement && !skin.unlocked) {
-                const unlockRequirement = document.createElement('div');
-                unlockRequirement.className = 'unlock-requirement';
-                unlockRequirement.textContent = `Unlock: ${skin.unlockRequirement}`;
-                skinCard.appendChild(unlockRequirement);
-            }
+            const selectButton = document.createElement('button');
+            selectButton.className = 'select-skin-button';
+            selectButton.textContent = skin.selected ? 'SELECTED' : 'SELECT';
+            selectButton.disabled = skin.selected;
             
-            if (skin.unlocked) {
-                const selectButton = document.createElement('button');
-                selectButton.className = 'select-skin-button';
-                selectButton.textContent = skin.selected ? 'SELECTED' : 'SELECT';
-                selectButton.disabled = skin.selected;
-                
-                selectButton.addEventListener('click', () => {
-                    this.game.skinSystem.selectSkin(creatureType, skin.id);
-                    this.updateSkins();
-                    this.showSkins(creatureType);
-                });
-                
-                skinCard.appendChild(selectButton);
-            }
+            selectButton.addEventListener('click', () => {
+                this.game.skinSystem.selectSkin(creatureType, skin.id);
+                this.updateSkins();
+                this.showSkins(creatureType);
+            });
             
+            skinCard.appendChild(selectButton);
             this.skinDisplayContainer.appendChild(skinCard);
         });
     }

@@ -223,18 +223,24 @@ class NarwhaleGame {
                     name: this.room.peers[clientId]?.username || 
                           presence.name || 
                           (clientId.startsWith('ai-') ? "Creature" : "Player"),
-                    segments: presence.segments,
+                    segments: presence.segments ? presence.segments.map(s => ({ ...s })) : [],
+                    targetSegments: presence.segments,
                     color: presence.color,
+                    type: presence.type || 'narwhal',
+                    skinId: presence.skinId || 'default',
                     isDashing: presence.isDashing,
                     isAlive: presence.isAlive,
                     kills: presence.kills || 0
                 };
             } 
             else if (this.players[clientId]) {
-                this.players[clientId].segments = presence.segments;
+                this.players[clientId].targetSegments = presence.segments;
                 this.players[clientId].isDashing = presence.isDashing;
                 this.players[clientId].isAlive = presence.isAlive;
                 this.players[clientId].kills = presence.kills || 0;
+                if (!this.players[clientId].segments || this.players[clientId].segments.length === 0) {
+                    this.players[clientId].segments = presence.segments ? presence.segments.map(s => ({ ...s })) : [];
+                }
             }
         }
 
@@ -258,6 +264,40 @@ class NarwhaleGame {
     }
 
     update(deltaTime) {
+        // Smoothly interpolate remote players between network ticks
+        for (const clientId in this.players) {
+            if (clientId === this.room?.clientId || (this.creature && clientId === this.creature.id)) continue;
+            const p = this.players[clientId];
+            if (p && p.targetSegments && p.targetSegments[0] && p.segments && p.segments[0]) {
+                const lerpFactor = 0.35;
+                p.segments[0].x += (p.targetSegments[0].x - p.segments[0].x) * lerpFactor;
+                p.segments[0].y += (p.targetSegments[0].y - p.segments[0].y) * lerpFactor;
+                
+                let diff = (p.targetSegments[0].angle || 0) - (p.segments[0].angle || 0);
+                while (diff < -Math.PI) diff += Math.PI * 2;
+                while (diff > Math.PI) diff -= Math.PI * 2;
+                p.segments[0].angle = (p.segments[0].angle || 0) + diff * lerpFactor;
+
+                for (let i = 1; i < p.segments.length; i++) {
+                    const prev = p.segments[i - 1];
+                    const cur = p.segments[i];
+                    const dx = prev.x - cur.x;
+                    const dy = prev.y - cur.y;
+                    const ang = Math.atan2(dy, dx);
+                    cur.x = prev.x - Math.cos(ang) * 14;
+                    cur.y = prev.y - Math.sin(ang) * 14;
+                    cur.angle = ang;
+                }
+                
+                if (this.playerPresences[clientId]) {
+                    this.playerPresences[clientId].segments = p.segments;
+                    this.playerPresences[clientId].x = p.segments[0].x;
+                    this.playerPresences[clientId].y = p.segments[0].y;
+                    this.playerPresences[clientId].angle = p.segments[0].angle;
+                }
+            }
+        }
+
         if (this.usernameDisplay) {
             this.usernameDisplay.updateCreatureNames();
         }
@@ -359,8 +399,6 @@ class NarwhaleGame {
         }
         
         this.updateBubbles(deltaTime);
-        
-        this.updateLeaderboard();
     }
 
     render() {
@@ -498,10 +536,15 @@ class NarwhaleGame {
         }
     }
 
-    updateLeaderboard() {
+    updateLeaderboard(force = false) {
+        const now = performance.now();
+        if (!force && this._lastLeaderboardUpdate && (now - this._lastLeaderboardUpdate < 400)) {
+            return;
+        }
+        this._lastLeaderboardUpdate = now;
+
         const leaderboardEl = document.getElementById('players-list');
         if (!leaderboardEl) return;
-        leaderboardEl.innerHTML = '';
         
         const players = [];
         
@@ -534,27 +577,15 @@ class NarwhaleGame {
         
         players.sort((a, b) => b.kills - a.kills);
         
+        let html = '';
         players.slice(0, 10).forEach((player, index) => {
-            const playerEntry = document.createElement('div');
-            playerEntry.className = 'player-entry';
-            
-            const nameEl = document.createElement('div');
-            nameEl.className = 'player-name';
-            nameEl.textContent = `${index + 1}. ${player.name}${player.isLocal ? ' (You)' : ''}`;
-            
-            if (player.isLocal) {
-                nameEl.style.fontWeight = 'bold';
-                nameEl.style.color = '#38bdf8';
-            }
-            
-            const killsEl = document.createElement('div');
-            killsEl.className = 'player-kills';
-            killsEl.textContent = player.kills;
-            
-            playerEntry.appendChild(nameEl);
-            playerEntry.appendChild(killsEl);
-            leaderboardEl.appendChild(playerEntry);
+            const boldStyle = player.isLocal ? 'style="font-weight: bold; color: #38bdf8;"' : '';
+            html += `<div class="player-entry">
+                <div class="player-name" ${boldStyle}>${index + 1}. ${player.name}${player.isLocal ? ' (You)' : ''}</div>
+                <div class="player-kills">${player.kills}</div>
+            </div>`;
         });
+        leaderboardEl.innerHTML = html;
     }
 
     getRandomCreatureColor() {

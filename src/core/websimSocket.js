@@ -1,24 +1,58 @@
 import { io } from "socket.io-client";
-import { joinRoom as joinNostrRoom, selfId as nostrSelfId } from "@trystero-p2p/nostr";
 import { joinRoom as joinTorrentRoom, selfId as torrentSelfId } from "@trystero-p2p/torrent";
+import { joinRoom as joinNostrRoom, selfId as nostrSelfId } from "@trystero-p2p/nostr";
 
-// Verified live, accessible public WebTorrent trackers
+// High-speed, dedicated WebTorrent WebSocket trackers for WebRTC signaling
 const TORRENT_TRACKERS = [
     'wss://tracker.openwebtorrent.com',
     'wss://tracker.webtorrent.dev'
 ];
 
-// Verified live, accessible public Nostr relays
+// Fallback Nostr relays
 const NOSTR_RELAYS = [
     'wss://relay.damus.io',
     'wss://purplerelay.com',
-    'wss://relay.snort.social',
     'wss://nostr.mom'
 ];
 
+function bindAction(room, actionName) {
+    if (!room || typeof room.makeAction !== 'function') {
+        return { send: () => {}, onMessage: () => {} };
+    }
+    const res = room.makeAction(actionName);
+    if (Array.isArray(res)) {
+        return {
+            send: (data, targetId) => res[0](data, targetId),
+            onMessage: (handler) => res[1](handler)
+        };
+    }
+    if (res && typeof res === 'object') {
+        return {
+            send: (data, targetId) => {
+                if (typeof res.send === 'function') {
+                    if (targetId) {
+                        res.send(data, { target: targetId });
+                    } else {
+                        res.send(data);
+                    }
+                }
+            },
+            onMessage: (handler) => {
+                if ('onMessage' in res) {
+                    res.onMessage = (data, meta) => {
+                        const peerId = typeof meta === 'string' ? meta : (meta?.peerId || '');
+                        handler(data, peerId);
+                    };
+                }
+            }
+        };
+    }
+    return { send: () => {}, onMessage: () => {} };
+}
+
 export class WebsimSocket {
     constructor() {
-        this.clientId = nostrSelfId || torrentSelfId || ("player_" + Math.random().toString(36).substring(2, 9));
+        this.clientId = torrentSelfId || nostrSelfId || ("player_" + Math.random().toString(36).substring(2, 9));
         this.username = "Player";
         this.peers = {};
         this.roomState = {
@@ -36,24 +70,16 @@ export class WebsimSocket {
         this.statusCallbacks = [];
 
         this.socket = null;
-        this.nostrRoom = null;
-        this.torrentRoom = null;
+        this.p2pRoom = null;
         this.broadcastChannel = null;
 
         this.isServerConnected = false;
         this.isP2PConnected = false;
         this.isConnecting = true;
-        this.isHost = false;
         this.lastPresenceEmit = 0;
 
-        this.botSimulationInterval = null;
-        this.serverBots = [];
-
         // P2P Action dispatchers
-        this.p2pActions = {
-            nostr: null,
-            torrent: null
-        };
+        this.actions = null;
 
         // Load cached room state
         try {
@@ -66,61 +92,7 @@ export class WebsimSocket {
             }
         } catch (e) {}
 
-        this.initBots();
         this.initBroadcastChannel();
-    }
-
-    initBots() {
-        const configs = [
-            { id: "ai-0", name: "AquaGlider", type: "narwhal", skinId: "default", color: "#38bdf8", x: 700, y: 700, angle: 0.5 },
-            { id: "ai-1", name: "ApexShark", type: "shark", skinId: "default", color: "#64748b", x: 1800, y: 800, angle: 2.2 },
-            { id: "ai-2", name: "WaveRider", type: "dolphin", skinId: "default", color: "#0284c7", x: 900, y: 1700, angle: -1.2 },
-            { id: "ai-3", name: "AbyssSquid", type: "squid", skinId: "default", color: "#ec4899", x: 1900, y: 1900, angle: 3.0 },
-            { id: "ai-4", name: "PhantomFin", type: "knifefish", skinId: "default", color: "#a855f7", x: 1300, y: 1200, angle: 1.0 },
-            { id: "ai-5", name: "HammerheadBot", type: "shark", skinId: "hammerhead", color: "#475569", x: 1600, y: 1500, angle: -2.5 }
-        ];
-
-        this.serverBots = configs.map(cfg => ({
-            ...cfg,
-            targetAngle: cfg.angle,
-            speed: 4.0,
-            health: 100,
-            maxHealth: 100,
-            kills: 0,
-            isAlive: true,
-            respawnTime: 0,
-            turnTimer: Math.random() * 2000,
-            segments: this.createBotSegments(cfg.type, cfg.x, cfg.y, cfg.angle)
-        }));
-    }
-
-    createBotSegments(type, startX, startY, angle) {
-        const segments = [];
-        const count = 15;
-        for (let i = 0; i < count; i++) {
-            const t = i / (count - 1);
-            let scale = 1.0;
-            if (type === "narwhal") {
-                scale = t <= 0.28 ? 1.75 + (2.38 - 1.75) * (t / 0.28) : 2.38 - (2.38 - 0.5) * Math.pow((t - 0.28) / 0.72, 0.88);
-                scale *= 0.9;
-            } else if (type === "shark") {
-                scale = 1.8 * (1 - t * 0.75);
-            } else if (type === "dolphin") {
-                scale = 1.7 * (1 - t * 0.7);
-            } else if (type === "squid") {
-                scale = 1.6 * (1 - t * 0.6);
-            } else {
-                scale = 1.4 * (1 - t * 0.7);
-            }
-            segments.push({
-                x: startX - i * 14 * Math.cos(angle),
-                y: startY - i * 14 * Math.sin(angle),
-                angle,
-                scale,
-                round: i === 0
-            });
-        }
-        return segments;
     }
 
     initBroadcastChannel() {
@@ -141,10 +113,8 @@ export class WebsimSocket {
                         type: 'peerSync',
                         fromId: this.clientId,
                         username: this.username,
-                        kills: this.peers[this.clientId]?.kills || 0,
-                        presence: this.localPresences[this.clientId]
+                        kills: this.peers[this.clientId]?.kills || 0
                     });
-                    this.updateHostElection();
                     this.notifyStatus();
                 } else if (msg.type === 'peerSync') {
                     this.peers[msg.fromId] = {
@@ -152,30 +122,18 @@ export class WebsimSocket {
                         username: msg.username || 'Player',
                         kills: msg.kills || 0
                     };
-                    if (msg.presence) {
-                        this.handleIncomingPresence(msg.fromId, msg.presence);
-                    }
-                    this.updateHostElection();
                     this.notifyStatus();
                 } else if (msg.type === 'peerLeft') {
                     delete this.peers[msg.fromId];
                     delete this.localPresences[msg.fromId];
-                    this.updateHostElection();
                     this.notifyStatus();
                     for (const cb of this.presenceCallbacks) cb(this.localPresences);
                 } else if (msg.type === 'presence') {
                     this.handleIncomingPresence(msg.fromId, msg.data);
                 } else if (msg.type === 'attackPlayer' && msg.targetId === this.clientId) {
                     this.handleIncomingDamage(msg.data);
-                } else if (msg.type === 'attackBot') {
-                    this.handleBotAttackFromPeer(msg.data, msg.fromId);
                 } else if (msg.type === 'killBroadcast') {
                     this.handleIncomingKill(msg.data);
-                } else if (msg.type === 'botTick') {
-                    if (!this.isHost && !this.isServerConnected) {
-                        this.localPresences = { ...msg.bots, ...this.localPresences };
-                        for (const cb of this.presenceCallbacks) cb(this.localPresences);
-                    }
                 }
             };
 
@@ -188,7 +146,7 @@ export class WebsimSocket {
                 }
             });
         } catch (e) {
-            console.warn('[BroadcastChannel] init failed:', e);
+            console.warn('[BroadcastChannel] init error:', e);
         }
     }
 
@@ -205,7 +163,7 @@ export class WebsimSocket {
 
         this.peers[this.clientId] = { id: this.clientId, username: this.username, kills: 0 };
 
-        // 1. Try local Socket.IO connection first (on localhost)
+        // 1. Try local Socket.IO connection first if on localhost
         const isLocal = typeof window !== 'undefined' && 
             (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
         
@@ -213,8 +171,8 @@ export class WebsimSocket {
             await this.trySocketIo();
         }
 
-        // 2. Initialize global WebRTC mesh network (via Nostr & WebTorrent)
-        this.initGlobalP2P();
+        // 2. Initialize single, high-performance P2P room (Torrent first, Nostr fallback)
+        this.initP2PRoom();
 
         // 3. Announce to local tabs via BroadcastChannel
         if (this.broadcastChannel) {
@@ -227,7 +185,6 @@ export class WebsimSocket {
         }
 
         this.isConnecting = false;
-        this.updateHostElection();
         this.notifyStatus();
     }
 
@@ -306,81 +263,80 @@ export class WebsimSocket {
         });
     }
 
-    initGlobalP2P() {
-        const appId = 'seastriker-ocean-global-v1';
-        const roomId = 'ocean-arena-lobby';
+    initP2PRoom() {
+        const appId = 'seastriker-ocean-2026';
+        const roomId = 'ocean-main-lobby';
 
-        // Connect via Nostr relays
         try {
-            this.nostrRoom = joinNostrRoom({
-                appId,
-                relayUrls: NOSTR_RELAYS
-            }, roomId);
-
-            this.setupRoomActions(this.nostrRoom, 'nostr');
-        } catch (e) {
-            console.warn('[P2P] Nostr room setup failed:', e);
-        }
-
-        // Connect via WebTorrent trackers for redundancy
-        try {
-            this.torrentRoom = joinTorrentRoom({
+            // WebTorrent WebRTC is ultra-fast and avoids duplicate socket overhead
+            this.p2pRoom = joinTorrentRoom({
                 appId,
                 trackerUrls: TORRENT_TRACKERS
             }, roomId);
-
-            this.setupRoomActions(this.torrentRoom, 'torrent');
         } catch (e) {
-            console.warn('[P2P] Torrent room setup failed:', e);
+            console.warn('[P2P] WebTorrent init failed, falling back to Nostr:', e);
+            try {
+                this.p2pRoom = joinNostrRoom({
+                    appId,
+                    relayUrls: NOSTR_RELAYS
+                }, roomId);
+            } catch (err) {
+                console.error('[P2P] All P2P signaling failed:', err);
+                return;
+            }
         }
-    }
 
-    setupRoomActions(room, type) {
-        if (!room) return;
+        if (!this.p2pRoom) return;
 
-        const [sendPresence, onPresence] = room.makeAction('presence');
-        const [sendPeerInfo, onPeerInfo] = room.makeAction('peerInfo');
-        const [sendAttackPlayer, onAttackPlayer] = room.makeAction('attackPlayer');
-        const [sendAttackBot, onAttackBot] = room.makeAction('attackBot');
-        const [sendKillBroadcast, onKillBroadcast] = room.makeAction('killBroadcast');
-        const [sendBotTick, onBotTick] = room.makeAction('botTick');
+        const presenceAction = bindAction(this.p2pRoom, 'presence');
+        const peerInfoAction = bindAction(this.p2pRoom, 'peerInfo');
+        const attackPlayerAction = bindAction(this.p2pRoom, 'attackPlayer');
+        const killBroadcastAction = bindAction(this.p2pRoom, 'killBroadcast');
 
-        this.p2pActions[type] = {
-            sendPresence,
-            sendPeerInfo,
-            sendAttackPlayer,
-            sendAttackBot,
-            sendKillBroadcast,
-            sendBotTick
+        this.actions = {
+            sendPresence: (data, targetId) => presenceAction.send(data, targetId),
+            sendPeerInfo: (data, targetId) => peerInfoAction.send(data, targetId),
+            sendAttackPlayer: (data, targetId) => attackPlayerAction.send(data, targetId),
+            sendKillBroadcast: (data, targetId) => killBroadcastAction.send(data, targetId)
         };
 
-        room.onPeerJoin((peerId) => {
+        const handlePeerJoin = (peerId) => {
             this.isP2PConnected = true;
             this.peers[peerId] = { id: peerId, username: 'Player', kills: 0 };
 
-            sendPeerInfo({
+            peerInfoAction.send({
                 id: this.clientId,
                 username: this.username,
                 kills: this.peers[this.clientId]?.kills || 0
             }, peerId);
 
             if (this.localPresences[this.clientId]) {
-                sendPresence(this.localPresences[this.clientId], peerId);
+                presenceAction.send(this.localPresences[this.clientId], peerId);
             }
 
-            this.updateHostElection();
             this.notifyStatus();
-        });
+        };
 
-        room.onPeerLeave((peerId) => {
+        const handlePeerLeave = (peerId) => {
             delete this.peers[peerId];
             delete this.localPresences[peerId];
-            this.updateHostElection();
             this.notifyStatus();
             for (const cb of this.presenceCallbacks) cb(this.localPresences);
-        });
+        };
 
-        onPeerInfo((data, peerId) => {
+        if (typeof this.p2pRoom.onPeerJoin === 'function') {
+            this.p2pRoom.onPeerJoin(handlePeerJoin);
+        } else {
+            this.p2pRoom.onPeerJoin = handlePeerJoin;
+        }
+
+        if (typeof this.p2pRoom.onPeerLeave === 'function') {
+            this.p2pRoom.onPeerLeave(handlePeerLeave);
+        } else {
+            this.p2pRoom.onPeerLeave = handlePeerLeave;
+        }
+
+        peerInfoAction.onMessage((data, peerId) => {
             if (!data) return;
             this.isP2PConnected = true;
             this.peers[peerId] = {
@@ -391,12 +347,12 @@ export class WebsimSocket {
             this.notifyStatus();
         });
 
-        onPresence((data, peerId) => {
+        presenceAction.onMessage((data, peerId) => {
             if (this.isServerConnected) return;
             this.handleIncomingPresence(peerId, data);
         });
 
-        onAttackPlayer((data, attackerId) => {
+        attackPlayerAction.onMessage((data, attackerId) => {
             if (!data || data.targetId !== this.clientId) return;
             this.handleIncomingDamage({
                 attackerId,
@@ -408,18 +364,8 @@ export class WebsimSocket {
             });
         });
 
-        onAttackBot((data, attackerId) => {
-            this.handleBotAttackFromPeer(data, attackerId);
-        });
-
-        onKillBroadcast((data) => {
+        killBroadcastAction.onMessage((data) => {
             this.handleIncomingKill(data);
-        });
-
-        onBotTick((bots) => {
-            if (this.isHost || this.isServerConnected || !bots) return;
-            this.localPresences = { ...bots, ...this.localPresences };
-            for (const cb of this.presenceCallbacks) cb(this.localPresences);
         });
     }
 
@@ -478,214 +424,15 @@ export class WebsimSocket {
             if (window.game.skinUnlockSystem && window.game.creature.type) {
                 window.game.skinUnlockSystem.trackKill(window.game.creature.type);
             }
-            window.game.updateLeaderboard();
-        }
-    }
-
-    handleBotAttackFromPeer(data, attackerId) {
-        if (!this.isHost || !data || !data.botId) return;
-        const bot = this.serverBots.find(b => b.id === data.botId);
-        if (!bot || !bot.isAlive) return;
-
-        bot.health -= (data.damage || 25);
-        if (bot.health <= 0) {
-            bot.health = 0;
-            bot.isAlive = false;
-            bot.respawnTime = Date.now() + 5000;
-
-            const killerName = this.peers[attackerId]?.username || 'Player';
-            if (this.peers[attackerId]) {
-                this.peers[attackerId].kills = (this.peers[attackerId].kills || 0) + 1;
-            }
-
-            const broadcast = {
-                killerId: attackerId,
-                killerName,
-                victimId: bot.id,
-                victimName: bot.name
-            };
-
-            this.dispatchBroadcast('sendKillBroadcast', 'killBroadcast', broadcast);
-            for (const cb of this.killBroadcastCallbacks) cb(broadcast);
-
-            if (attackerId === this.clientId) {
-                this.handleKillAwarded({ victimName: bot.name, kills: this.peers[this.clientId].kills });
-            }
-        }
-    }
-
-    updateHostElection() {
-        const allPeerIds = [this.clientId, ...Object.keys(this.peers)].sort();
-        const shouldBeHost = allPeerIds[0] === this.clientId;
-
-        if (shouldBeHost && !this.isHost) {
-            this.isHost = true;
-            this.startBotSimulation();
-        } else if (!shouldBeHost && this.isHost) {
-            this.isHost = false;
-            this.stopBotSimulation();
-        }
-    }
-
-    startBotSimulation() {
-        if (this.botSimulationInterval) return;
-
-        this.botSimulationInterval = setInterval(() => {
-            if (this.isServerConnected) return;
-
-            const now = Date.now();
-            const formattedBots = {};
-
-            for (const bot of this.serverBots) {
-                if (!bot.isAlive) {
-                    if (bot.respawnTime > 0 && now >= bot.respawnTime) {
-                        bot.isAlive = true;
-                        bot.health = 100;
-                        bot.x = 400 + Math.random() * 1700;
-                        bot.y = 400 + Math.random() * 1700;
-                        bot.angle = Math.random() * Math.PI * 2;
-                        bot.targetAngle = bot.angle;
-                        bot.segments = this.createBotSegments(bot.type, bot.x, bot.y, bot.angle);
-                    }
-                    continue;
-                }
-
-                // AI Steering
-                bot.turnTimer += 50;
-                let nearestDist = 800;
-                let targetX = -1;
-                let targetY = -1;
-
-                for (const p of Object.values(this.localPresences)) {
-                    if (p && p.isAlive && !p.id?.startsWith('ai-') && p.x !== undefined && p.y !== undefined) {
-                        const d = Math.hypot(p.x - bot.x, p.y - bot.y);
-                        if (d < nearestDist) {
-                            nearestDist = d;
-                            targetX = p.x;
-                            targetY = p.y;
-                        }
-                    }
-                }
-
-                if (targetX !== -1 && targetY !== -1) {
-                    bot.targetAngle = Math.atan2(targetY - bot.y, targetX - bot.x);
-                } else if (bot.turnTimer > 2000) {
-                    bot.turnTimer = 0;
-                    bot.targetAngle += (Math.random() - 0.5) * 1.2;
-                }
-
-                let angleDiff = bot.targetAngle - bot.angle;
-                while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
-                while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
-                bot.angle += Math.max(-0.08, Math.min(0.08, angleDiff));
-
-                const margin = 200;
-                if (bot.x < margin) bot.targetAngle = 0;
-                else if (bot.x > 2500 - margin) bot.targetAngle = Math.PI;
-                else if (bot.y < margin) bot.targetAngle = Math.PI / 2;
-                else if (bot.y > 2500 - margin) bot.targetAngle = -Math.PI / 2;
-
-                bot.x += Math.cos(bot.angle) * bot.speed;
-                bot.y += Math.sin(bot.angle) * bot.speed;
-                bot.x = Math.max(100, Math.min(2400, bot.x));
-                bot.y = Math.max(100, Math.min(2400, bot.y));
-
-                bot.segments[0].x = bot.x;
-                bot.segments[0].y = bot.y;
-                bot.segments[0].angle = bot.angle;
-
-                for (let i = 1; i < bot.segments.length; i++) {
-                    const prev = bot.segments[i - 1];
-                    const cur = bot.segments[i];
-                    const dx = prev.x - cur.x;
-                    const dy = prev.y - cur.y;
-                    const ang = Math.atan2(dy, dx);
-                    cur.x = prev.x - Math.cos(ang) * 13;
-                    cur.y = prev.y - Math.sin(ang) * 13;
-                    cur.angle = ang;
-                }
-
-                formattedBots[bot.id] = {
-                    id: bot.id,
-                    name: bot.name,
-                    type: bot.type,
-                    skinId: bot.skinId,
-                    color: bot.color,
-                    x: bot.x,
-                    y: bot.y,
-                    angle: bot.angle,
-                    segments: bot.segments,
-                    health: bot.health,
-                    maxHealth: bot.maxHealth,
-                    kills: bot.kills,
-                    isAlive: bot.isAlive,
-                    isDashing: false,
-                    staminaReady: true,
-                    stamina: 1.0
-                };
-            }
-
-            this.localPresences = { ...formattedBots, ...this.localPresences };
-            this.dispatchBroadcast('sendBotTick', 'botTick', { bots: formattedBots });
-
-            for (const cb of this.presenceCallbacks) {
-                cb(this.localPresences);
-            }
-        }, 50);
-    }
-
-    stopBotSimulation() {
-        if (this.botSimulationInterval) {
-            clearInterval(this.botSimulationInterval);
-            this.botSimulationInterval = null;
-        }
-    }
-
-    dispatchBroadcast(actionName, bcType, payload) {
-        // 1. Trystero Nostr
-        if (this.p2pActions.nostr?.[actionName]) {
-            try { this.p2pActions.nostr[actionName](payload); } catch (e) {}
-        }
-        // 2. Trystero Torrent
-        if (this.p2pActions.torrent?.[actionName]) {
-            try { this.p2pActions.torrent[actionName](payload); } catch (e) {}
-        }
-        // 3. BroadcastChannel (cross-tab local)
-        if (this.broadcastChannel) {
-            try {
-                this.broadcastChannel.postMessage({
-                    type: bcType,
-                    fromId: this.clientId,
-                    data: payload,
-                    ...(payload && typeof payload === 'object' ? payload : {})
-                });
-            } catch (e) {}
-        }
-    }
-
-    dispatchDirect(actionName, bcType, payload, targetId) {
-        if (this.p2pActions.nostr?.[actionName]) {
-            try { this.p2pActions.nostr[actionName](payload, targetId); } catch (e) {}
-        }
-        if (this.p2pActions.torrent?.[actionName]) {
-            try { this.p2pActions.torrent[actionName](payload, targetId); } catch (e) {}
-        }
-        if (this.broadcastChannel) {
-            try {
-                this.broadcastChannel.postMessage({
-                    type: bcType,
-                    fromId: this.clientId,
-                    targetId,
-                    data: payload,
-                    ...(payload && typeof payload === 'object' ? payload : {})
-                });
-            } catch (e) {}
+            window.game.updateLeaderboard(true);
         }
     }
 
     getOnlineCount() {
         const humanPeersCount = Math.max(1, Object.keys(this.peers).length);
-        const aliveBots = this.serverBots ? this.serverBots.filter(b => b.isAlive).length : 6;
+        const aliveBots = (typeof window !== 'undefined' && window.game?.aiController?.aiPlayers) 
+            ? Object.keys(window.game.aiController.aiPlayers).length 
+            : 6;
         return humanPeersCount + aliveBots;
     }
 
@@ -727,17 +474,57 @@ export class WebsimSocket {
         this.killAwardedCallbacks.push(callback);
     }
 
+    // High performance compact presence serialization (reduces payload by 70%)
+    packPresence(data) {
+        if (!data) return null;
+        return {
+            x: Math.round(data.x * 10) / 10,
+            y: Math.round(data.y * 10) / 10,
+            angle: Math.round((data.angle || 0) * 100) / 100,
+            segments: data.segments ? data.segments.map(s => ({
+                x: Math.round(s.x * 10) / 10,
+                y: Math.round(s.y * 10) / 10,
+                angle: Math.round(s.angle * 100) / 100,
+                scale: s.scale,
+                round: s.round
+            })) : [],
+            color: data.color,
+            name: data.name,
+            type: data.type,
+            skinId: data.skinId,
+            isDashing: !!data.isDashing,
+            isDodging: !!data.isDodging,
+            isAlive: !!data.isAlive,
+            health: data.health !== undefined ? Math.round(data.health) : 100,
+            kills: data.kills || 0
+        };
+    }
+
     updatePresence(data) {
         if (!data) return;
         this.localPresences[this.clientId] = data;
 
         const now = performance.now();
-        if (now - this.lastPresenceEmit >= 33) {
+        // 45ms throttle (~22Hz update rate) prevents WebRTC data bufferbloat
+        if (now - this.lastPresenceEmit >= 45) {
             this.lastPresenceEmit = now;
+            const packed = this.packPresence(data);
+
             if (this.socket && this.socket.connected) {
-                this.socket.emit('updatePresence', data);
+                this.socket.emit('updatePresence', packed);
             }
-            this.dispatchBroadcast('sendPresence', 'presence', data);
+            if (this.actions?.sendPresence) {
+                try { this.actions.sendPresence(packed); } catch (e) {}
+            }
+            if (this.broadcastChannel) {
+                try {
+                    this.broadcastChannel.postMessage({
+                        type: 'presence',
+                        fromId: this.clientId,
+                        data: packed
+                    });
+                } catch (e) {}
+            }
         }
     }
 
@@ -746,53 +533,51 @@ export class WebsimSocket {
         if (this.socket && this.socket.connected) {
             this.socket.emit('attackPlayer', payload);
         }
-        this.dispatchDirect('sendAttackPlayer', 'attackPlayer', payload, targetId);
+        if (this.actions?.sendAttackPlayer) {
+            try { this.actions.sendAttackPlayer(payload, targetId); } catch (e) {}
+        }
+        if (this.broadcastChannel) {
+            try {
+                this.broadcastChannel.postMessage({
+                    type: 'attackPlayer',
+                    fromId: this.clientId,
+                    targetId,
+                    data: payload
+                });
+            } catch (e) {}
+        }
     }
 
     attackBot(botId, damage, hitType = 'bodyHit', angle = 0) {
         if (this.socket && this.socket.connected) {
             this.socket.emit('attackBot', { botId, damage, hitType, angle });
-        } else if (this.isHost) {
-            const bot = this.serverBots.find(b => b.id === botId);
-            if (!bot || !bot.isAlive) return;
-            bot.health -= (damage || 25);
-            if (bot.health <= 0) {
-                bot.health = 0;
-                bot.isAlive = false;
-                bot.respawnTime = Date.now() + 5000;
-                if (this.peers[this.clientId]) {
-                    this.peers[this.clientId].kills = (this.peers[this.clientId].kills || 0) + 1;
-                    const kills = this.peers[this.clientId].kills;
-                    const broadcast = {
-                        killerId: this.clientId,
-                        killerName: this.username,
-                        victimId: bot.id,
-                        victimName: bot.name
-                    };
-                    this.dispatchBroadcast('sendKillBroadcast', 'killBroadcast', broadcast);
-                    for (const cb of this.killBroadcastCallbacks) cb(broadcast);
-                    this.handleKillAwarded({ victimName: bot.name, kills });
-                }
-            }
-        } else {
-            this.dispatchBroadcast('sendAttackBot', 'attackBot', { botId, damage, hitType, angle });
         }
     }
 
     notifyDeath(killerId) {
+        const killerName = (killerId && this.peers[killerId]?.username) || 'Ocean';
+        const broadcast = {
+            killerId: killerId || null,
+            killerName,
+            victimId: this.clientId,
+            victimName: this.username
+        };
         if (this.socket && this.socket.connected) {
             this.socket.emit('playerDied', { killerId });
-        } else {
-            const killerName = (killerId && this.peers[killerId]?.username) || 'Ocean';
-            const broadcast = {
-                killerId: killerId || null,
-                killerName,
-                victimId: this.clientId,
-                victimName: this.username
-            };
-            this.dispatchBroadcast('sendKillBroadcast', 'killBroadcast', broadcast);
-            for (const cb of this.killBroadcastCallbacks) cb(broadcast);
         }
+        if (this.actions?.sendKillBroadcast) {
+            try { this.actions.sendKillBroadcast(broadcast); } catch (e) {}
+        }
+        if (this.broadcastChannel) {
+            try {
+                this.broadcastChannel.postMessage({
+                    type: 'killBroadcast',
+                    fromId: this.clientId,
+                    data: broadcast
+                });
+            } catch (e) {}
+        }
+        for (const cb of this.killBroadcastCallbacks) cb(broadcast);
     }
 
     requestPresenceUpdate(targetId, updateRequest) {
@@ -817,7 +602,18 @@ export class WebsimSocket {
             username: clean,
             kills: this.peers[this.clientId]?.kills || 0
         };
-        this.dispatchBroadcast('sendPeerInfo', 'peerSync', info);
+        if (this.actions?.sendPeerInfo) {
+            try { this.actions.sendPeerInfo(info); } catch (e) {}
+        }
+        if (this.broadcastChannel) {
+            try {
+                this.broadcastChannel.postMessage({
+                    type: 'peerSync',
+                    fromId: this.clientId,
+                    ...info
+                });
+            } catch (e) {}
+        }
         this.notifyStatus();
     }
 
