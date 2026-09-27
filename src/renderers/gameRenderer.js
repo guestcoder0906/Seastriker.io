@@ -219,9 +219,9 @@ export class GameRenderer {
 
         ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
         ctx.textAlign = 'left';
-        const label = isOnline 
-            ? `Multiplayer Online (${count} player${count === 1 ? '' : 's'})` 
-            : (isConnecting ? 'Connecting to Ocean...' : `Ocean Arena: Active (${count} player${count === 1 ? '' : 's'})`);
+        const label = isConnecting 
+            ? 'Connecting to Ocean...' 
+            : `Multiplayer Online (${count} player${count === 1 ? '' : 's'})`;
         ctx.fillText(label, 30, 24);
         ctx.restore();
     }

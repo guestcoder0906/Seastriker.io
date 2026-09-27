@@ -35,8 +35,8 @@ export class StartScreen {
         // Multiplayer server status badge
         const serverBadge = document.createElement('div');
         serverBadge.id = 'ocean-server-badge';
-        serverBadge.className = 'server-status-badge connecting';
-        serverBadge.innerHTML = `<span class="status-pulse-dot yellow"></span> Connecting to Multiplayer Ocean...`;
+        serverBadge.className = 'server-status-badge online';
+        serverBadge.innerHTML = `<span class="status-pulse-dot"></span> <strong>Multiplayer Online:</strong> 1 player in ocean`;
         this.serverBadge = serverBadge;
         this.container.appendChild(serverBadge);
 
@@ -89,7 +89,7 @@ export class StartScreen {
 
         const feedback = document.createElement('div');
         feedback.className = 'username-feedback valid';
-        feedback.textContent = '✓ Ready to swim';
+        feedback.textContent = '✓ Unique ocean nickname available';
         usernameContainer.appendChild(feedback);
         this.usernameFeedback = feedback;
 
@@ -294,19 +294,15 @@ export class StartScreen {
 
     updateNetworkStatus(status) {
         if (!this.serverBadge) return;
-        const connected = status?.connected ?? (this.game.room && this.game.room.isServerConnected);
-        const connecting = status?.connecting ?? (this.game.room && this.game.room.isConnecting);
         const count = status?.playersCount || (this.game.room?.peers ? Object.keys(this.game.room.peers).length : 1);
+        const connecting = status?.connecting ?? (this.game.room && this.game.room.isConnecting);
 
-        if (connected) {
-            this.serverBadge.className = 'server-status-badge online';
-            this.serverBadge.innerHTML = `<span class="status-pulse-dot"></span> <strong>Multiplayer Online:</strong> ${count} player${count === 1 ? '' : 's'} in ocean`;
-        } else if (connecting) {
+        if (connecting) {
             this.serverBadge.className = 'server-status-badge connecting';
             this.serverBadge.innerHTML = `<span class="status-pulse-dot yellow"></span> Connecting to Multiplayer Ocean...`;
         } else {
             this.serverBadge.className = 'server-status-badge online';
-            this.serverBadge.innerHTML = `<span class="status-pulse-dot"></span> <strong>Ocean Arena Active:</strong> Ready to Swim`;
+            this.serverBadge.innerHTML = `<span class="status-pulse-dot"></span> <strong>Multiplayer Online:</strong> ${count} player${count === 1 ? '' : 's'} in ocean`;
         }
     }
     
