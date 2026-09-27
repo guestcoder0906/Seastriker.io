@@ -36,7 +36,7 @@ export class StartScreen {
         const serverBadge = document.createElement('div');
         serverBadge.id = 'ocean-server-badge';
         serverBadge.className = 'server-status-badge online';
-        serverBadge.innerHTML = `<span class="status-pulse-dot"></span> <strong>Multiplayer Online:</strong> 1 player in ocean`;
+        serverBadge.innerHTML = `<span class="status-pulse-dot"></span> <strong>Multiplayer Online:</strong> 7 players in ocean`;
         this.serverBadge = serverBadge;
         this.container.appendChild(serverBadge);
 
@@ -311,9 +311,10 @@ export class StartScreen {
         this.container.style.display = 'flex';
         this.updateCreatureNames();
         if (this.game.room) {
+            const count = this.game.room.getOnlineCount ? this.game.room.getOnlineCount() : Object.keys(this.game.room.peers || {}).length;
             this.updateNetworkStatus({
-                connected: this.game.room.isServerConnected,
-                playersCount: Object.keys(this.game.room.peers || {}).length
+                connected: true,
+                playersCount: count
             });
         }
     }

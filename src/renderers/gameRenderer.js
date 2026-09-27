@@ -209,10 +209,12 @@ export class GameRenderer {
         ctx.save();
         const isOnline = this.game.room && this.game.room.isServerConnected;
         const isConnecting = this.game.room && this.game.room.isConnecting;
-        const count = Math.max(1, Object.keys(this.game.room?.peers || {}).length);
+        const count = this.game.room?.getOnlineCount 
+            ? this.game.room.getOnlineCount() 
+            : Math.max(1, Object.keys(this.game.room?.peers || {}).length);
 
         ctx.font = '12px "Segoe UI", Arial, sans-serif';
-        ctx.fillStyle = isOnline ? '#22c55e' : (isConnecting ? '#eab308' : '#38bdf8');
+        ctx.fillStyle = '#22c55e';
         ctx.beginPath();
         ctx.arc(20, 20, 4, 0, Math.PI * 2);
         ctx.fill();

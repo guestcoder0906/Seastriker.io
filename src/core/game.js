@@ -500,6 +500,7 @@ class NarwhaleGame {
 
     updateLeaderboard() {
         const leaderboardEl = document.getElementById('players-list');
+        if (!leaderboardEl) return;
         leaderboardEl.innerHTML = '';
         
         const players = [];
@@ -508,20 +509,17 @@ class NarwhaleGame {
             players.push({
                 id: this.room.clientId,
                 name: this.creature.name || this.room.peers[this.room.clientId]?.username || "You",
-                kills: this.creature.kills,
-                isLocal: true
+                kills: this.creature.kills || 0,
+                isLocal: true,
+                isAI: false
             });
         }
         
         for (const clientId in this.playerPresences) {
             if (clientId !== this.room.clientId && (!this.creature || clientId !== this.creature.id)) {
-                // Skip placeholder fake / AI bot players so ONLY real players appear in the leaderboard
-                if (clientId.startsWith('ai-')) {
-                    continue;
-                }
-                
                 const presence = this.playerPresences[clientId];
-                const name = this.room.peers[clientId]?.username || presence?.name || "Player";
+                const isAI = clientId.startsWith('ai-');
+                const name = this.room.peers[clientId]?.username || presence?.name || (isAI ? "Ocean Predator" : "Player");
                 const kills = (this.room.peers[clientId]?.kills !== undefined ? this.room.peers[clientId].kills : presence?.kills) || 0;
                 
                 players.push({
@@ -529,26 +527,24 @@ class NarwhaleGame {
                     name: name,
                     kills: kills,
                     isLocal: false,
-                    isAI: false
+                    isAI: isAI
                 });
             }
         }
         
         players.sort((a, b) => b.kills - a.kills);
         
-        players.forEach((player, index) => {
+        players.slice(0, 10).forEach((player, index) => {
             const playerEntry = document.createElement('div');
             playerEntry.className = 'player-entry';
             
             const nameEl = document.createElement('div');
             nameEl.className = 'player-name';
-            nameEl.textContent = `${index + 1}. ${player.name}`;
+            nameEl.textContent = `${index + 1}. ${player.name}${player.isLocal ? ' (You)' : ''}`;
             
             if (player.isLocal) {
                 nameEl.style.fontWeight = 'bold';
-            }
-            if (player.isAI) {
-                nameEl.style.fontStyle = 'italic';
+                nameEl.style.color = '#38bdf8';
             }
             
             const killsEl = document.createElement('div');

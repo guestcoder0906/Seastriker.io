@@ -1,17 +1,24 @@
 import { io } from "socket.io-client";
-import { joinRoom, selfId } from "@trystero-p2p/mqtt";
+import { joinRoom as joinNostrRoom, selfId as nostrSelfId } from "@trystero-p2p/nostr";
+import { joinRoom as joinTorrentRoom, selfId as torrentSelfId } from "@trystero-p2p/torrent";
 
-export function isLocalOrRunApp() {
-    if (typeof window === 'undefined') return true;
-    const host = window.location.hostname;
-    return host === 'localhost' || host === '127.0.0.1';
-}
+// Verified live, accessible public WebTorrent trackers
+const TORRENT_TRACKERS = [
+    'wss://tracker.openwebtorrent.com',
+    'wss://tracker.webtorrent.dev'
+];
+
+// Verified live, accessible public Nostr relays
+const NOSTR_RELAYS = [
+    'wss://relay.damus.io',
+    'wss://purplerelay.com',
+    'wss://relay.snort.social',
+    'wss://nostr.mom'
+];
 
 export class WebsimSocket {
     constructor() {
-        this.socket = null;
-        this.trysteroRoom = null;
-        this.clientId = selfId || ("player_" + Math.random().toString(36).substring(2, 9));
+        this.clientId = nostrSelfId || torrentSelfId || ("player_" + Math.random().toString(36).substring(2, 9));
         this.username = "Player";
         this.peers = {};
         this.roomState = {
@@ -28,18 +35,27 @@ export class WebsimSocket {
         this.killAwardedCallbacks = [];
         this.statusCallbacks = [];
 
+        this.socket = null;
+        this.nostrRoom = null;
+        this.torrentRoom = null;
+        this.broadcastChannel = null;
+
         this.isServerConnected = false;
         this.isP2PConnected = false;
         this.isConnecting = true;
         this.isHost = false;
         this.lastPresenceEmit = 0;
 
-        // P2P Action dispatchers
-        this.actions = null;
         this.botSimulationInterval = null;
-        this.serverBots = null;
+        this.serverBots = [];
 
-        // Load cached room state from localStorage
+        // P2P Action dispatchers
+        this.p2pActions = {
+            nostr: null,
+            torrent: null
+        };
+
+        // Load cached room state
         try {
             const saved = localStorage.getItem('narwhal_room_state');
             if (saved) {
@@ -51,6 +67,7 @@ export class WebsimSocket {
         } catch (e) {}
 
         this.initBots();
+        this.initBroadcastChannel();
     }
 
     initBots() {
@@ -66,7 +83,7 @@ export class WebsimSocket {
         this.serverBots = configs.map(cfg => ({
             ...cfg,
             targetAngle: cfg.angle,
-            speed: 4.2,
+            speed: 4.0,
             health: 100,
             maxHealth: 100,
             kills: 0,
@@ -106,6 +123,75 @@ export class WebsimSocket {
         return segments;
     }
 
+    initBroadcastChannel() {
+        if (typeof window === 'undefined' || !('BroadcastChannel' in window)) return;
+        try {
+            this.broadcastChannel = new BroadcastChannel('seastriker_ocean_multiplayer');
+            this.broadcastChannel.onmessage = (event) => {
+                const msg = event.data;
+                if (!msg || !msg.type || msg.fromId === this.clientId) return;
+
+                if (msg.type === 'peerJoined') {
+                    this.peers[msg.fromId] = {
+                        id: msg.fromId,
+                        username: msg.username || 'Player',
+                        kills: msg.kills || 0
+                    };
+                    this.broadcastChannel.postMessage({
+                        type: 'peerSync',
+                        fromId: this.clientId,
+                        username: this.username,
+                        kills: this.peers[this.clientId]?.kills || 0,
+                        presence: this.localPresences[this.clientId]
+                    });
+                    this.updateHostElection();
+                    this.notifyStatus();
+                } else if (msg.type === 'peerSync') {
+                    this.peers[msg.fromId] = {
+                        id: msg.fromId,
+                        username: msg.username || 'Player',
+                        kills: msg.kills || 0
+                    };
+                    if (msg.presence) {
+                        this.handleIncomingPresence(msg.fromId, msg.presence);
+                    }
+                    this.updateHostElection();
+                    this.notifyStatus();
+                } else if (msg.type === 'peerLeft') {
+                    delete this.peers[msg.fromId];
+                    delete this.localPresences[msg.fromId];
+                    this.updateHostElection();
+                    this.notifyStatus();
+                    for (const cb of this.presenceCallbacks) cb(this.localPresences);
+                } else if (msg.type === 'presence') {
+                    this.handleIncomingPresence(msg.fromId, msg.data);
+                } else if (msg.type === 'attackPlayer' && msg.targetId === this.clientId) {
+                    this.handleIncomingDamage(msg.data);
+                } else if (msg.type === 'attackBot') {
+                    this.handleBotAttackFromPeer(msg.data, msg.fromId);
+                } else if (msg.type === 'killBroadcast') {
+                    this.handleIncomingKill(msg.data);
+                } else if (msg.type === 'botTick') {
+                    if (!this.isHost && !this.isServerConnected) {
+                        this.localPresences = { ...msg.bots, ...this.localPresences };
+                        for (const cb of this.presenceCallbacks) cb(this.localPresences);
+                    }
+                }
+            };
+
+            window.addEventListener('beforeunload', () => {
+                if (this.broadcastChannel) {
+                    this.broadcastChannel.postMessage({
+                        type: 'peerLeft',
+                        fromId: this.clientId
+                    });
+                }
+            });
+        } catch (e) {
+            console.warn('[BroadcastChannel] init failed:', e);
+        }
+    }
+
     async initialize() {
         try {
             const savedUsername = localStorage.getItem('username');
@@ -119,15 +205,29 @@ export class WebsimSocket {
 
         this.peers[this.clientId] = { id: this.clientId, username: this.username, kills: 0 };
 
-        // 1. Try local Socket.IO connection first if on localhost
-        if (isLocalOrRunApp()) {
+        // 1. Try local Socket.IO connection first (on localhost)
+        const isLocal = typeof window !== 'undefined' && 
+            (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+        
+        if (isLocal) {
             await this.trySocketIo();
         }
 
-        // 2. Initialize real-time WebRTC room (active on Vercel / seastriker.io)
-        this.initP2PRoom();
+        // 2. Initialize global WebRTC mesh network (via Nostr & WebTorrent)
+        this.initGlobalP2P();
+
+        // 3. Announce to local tabs via BroadcastChannel
+        if (this.broadcastChannel) {
+            this.broadcastChannel.postMessage({
+                type: 'peerJoined',
+                fromId: this.clientId,
+                username: this.username,
+                kills: 0
+            });
+        }
 
         this.isConnecting = false;
+        this.updateHostElection();
         this.notifyStatus();
     }
 
@@ -138,9 +238,8 @@ export class WebsimSocket {
                     auth: { username: this.username },
                     transports: ['websocket', 'polling'],
                     reconnection: true,
-                    reconnectionAttempts: 3,
-                    reconnectionDelay: 1000,
-                    timeout: 2500
+                    reconnectionAttempts: 2,
+                    timeout: 1500
                 });
 
                 this.socket.on('connect', () => {
@@ -179,17 +278,9 @@ export class WebsimSocket {
                     for (const cb of this.presenceCallbacks) cb(this.localPresences);
                 });
 
-                this.socket.on('takeDamage', (data) => {
-                    this.handleIncomingDamage(data);
-                });
-
-                this.socket.on('killBroadcast', (data) => {
-                    for (const cb of this.killBroadcastCallbacks) cb(data);
-                });
-
-                this.socket.on('killAwarded', (data) => {
-                    this.handleKillAwarded(data);
-                });
+                this.socket.on('takeDamage', (data) => this.handleIncomingDamage(data));
+                this.socket.on('killBroadcast', (data) => this.handleIncomingKill(data));
+                this.socket.on('killAwarded', (data) => this.handleKillAwarded(data));
 
                 this.socket.on('peerJoined', (peer) => {
                     this.peers[peer.id] = peer;
@@ -208,156 +299,218 @@ export class WebsimSocket {
                     resolve();
                 });
 
-                setTimeout(resolve, 2000);
+                setTimeout(resolve, 1500);
             } catch (e) {
                 resolve();
             }
         });
     }
 
-    initP2PRoom() {
+    initGlobalP2P() {
+        const appId = 'seastriker-ocean-global-v1';
+        const roomId = 'ocean-arena-lobby';
+
+        // Connect via Nostr relays
         try {
-            const config = {
-                appId: 'seastriker-ocean-pvp-v2'
-            };
+            this.nostrRoom = joinNostrRoom({
+                appId,
+                relayUrls: NOSTR_RELAYS
+            }, roomId);
 
-            this.trysteroRoom = joinRoom(config, 'ocean-arena-main');
+            this.setupRoomActions(this.nostrRoom, 'nostr');
+        } catch (e) {
+            console.warn('[P2P] Nostr room setup failed:', e);
+        }
 
-            // Set up real-time WebRTC channels
-            const [sendPresence, onPresence] = this.trysteroRoom.makeAction('presence');
-            const [sendPeerInfo, onPeerInfo] = this.trysteroRoom.makeAction('peerInfo');
-            const [sendAttackPlayer, onAttackPlayer] = this.trysteroRoom.makeAction('attackPlayer');
-            const [sendAttackBot, onAttackBot] = this.trysteroRoom.makeAction('attackBot');
-            const [sendKillBroadcast, onKillBroadcast] = this.trysteroRoom.makeAction('killBroadcast');
-            const [sendBotTick, onBotTick] = this.trysteroRoom.makeAction('botTick');
+        // Connect via WebTorrent trackers for redundancy
+        try {
+            this.torrentRoom = joinTorrentRoom({
+                appId,
+                trackerUrls: TORRENT_TRACKERS
+            }, roomId);
 
-            this.actions = {
-                sendPresence,
-                sendPeerInfo,
-                sendAttackPlayer,
-                sendAttackBot,
-                sendKillBroadcast,
-                sendBotTick
-            };
+            this.setupRoomActions(this.torrentRoom, 'torrent');
+        } catch (e) {
+            console.warn('[P2P] Torrent room setup failed:', e);
+        }
+    }
 
-            this.trysteroRoom.onPeerJoin((peerId) => {
-                this.isP2PConnected = true;
-                this.peers[peerId] = { id: peerId, username: 'Player', kills: 0 };
-                
-                // Send our info to the newly joined peer
-                sendPeerInfo({
-                    id: this.clientId,
-                    username: this.username,
-                    kills: this.peers[this.clientId]?.kills || 0
-                }, peerId);
+    setupRoomActions(room, type) {
+        if (!room) return;
 
-                if (this.localPresences[this.clientId]) {
-                    sendPresence(this.localPresences[this.clientId], peerId);
-                }
+        const [sendPresence, onPresence] = room.makeAction('presence');
+        const [sendPeerInfo, onPeerInfo] = room.makeAction('peerInfo');
+        const [sendAttackPlayer, onAttackPlayer] = room.makeAction('attackPlayer');
+        const [sendAttackBot, onAttackBot] = room.makeAction('attackBot');
+        const [sendKillBroadcast, onKillBroadcast] = room.makeAction('killBroadcast');
+        const [sendBotTick, onBotTick] = room.makeAction('botTick');
 
-                this.updateHostElection();
-                this.notifyStatus();
-            });
+        this.p2pActions[type] = {
+            sendPresence,
+            sendPeerInfo,
+            sendAttackPlayer,
+            sendAttackBot,
+            sendKillBroadcast,
+            sendBotTick
+        };
 
-            this.trysteroRoom.onPeerLeave((peerId) => {
-                delete this.peers[peerId];
-                delete this.localPresences[peerId];
-                this.updateHostElection();
-                this.notifyStatus();
-                for (const cb of this.presenceCallbacks) {
-                    cb(this.localPresences);
-                }
-            });
+        room.onPeerJoin((peerId) => {
+            this.isP2PConnected = true;
+            this.peers[peerId] = { id: peerId, username: 'Player', kills: 0 };
 
-            onPeerInfo((data, peerId) => {
-                if (!data) return;
-                this.isP2PConnected = true;
-                this.peers[peerId] = {
-                    id: peerId,
-                    username: data.username || 'Player',
-                    kills: data.kills || 0
-                };
-                this.notifyStatus();
-            });
+            sendPeerInfo({
+                id: this.clientId,
+                username: this.username,
+                kills: this.peers[this.clientId]?.kills || 0
+            }, peerId);
 
-            onPresence((data, peerId) => {
-                if (!data || this.isServerConnected) return;
-                data.id = peerId;
-                data.name = this.peers[peerId]?.username || data.name || 'Player';
-                this.localPresences[peerId] = data;
-                for (const cb of this.presenceCallbacks) {
-                    cb(this.localPresences);
-                }
-            });
-
-            onAttackPlayer((data, attackerId) => {
-                if (!data || data.targetId !== this.clientId) return;
-                this.handleIncomingDamage({
-                    attackerId,
-                    attackerName: this.peers[attackerId]?.username || 'Player',
-                    damage: data.damage,
-                    hitType: data.hitType,
-                    knockbackAngle: data.angle,
-                    knockbackForce: data.knockbackForce
-                });
-            });
-
-            onAttackBot((data, attackerId) => {
-                if (!this.isHost || !data || !data.botId) return;
-                const bot = this.serverBots.find(b => b.id === data.botId);
-                if (!bot || !bot.isAlive) return;
-
-                bot.health -= (data.damage || 25);
-                if (bot.health <= 0) {
-                    bot.health = 0;
-                    bot.isAlive = false;
-                    bot.respawnTime = Date.now() + 5000;
-
-                    const killerName = this.peers[attackerId]?.username || 'Player';
-                    if (this.peers[attackerId]) {
-                        this.peers[attackerId].kills = (this.peers[attackerId].kills || 0) + 1;
-                    }
-
-                    const broadcast = {
-                        killerId: attackerId,
-                        killerName,
-                        victimId: bot.id,
-                        victimName: bot.name
-                    };
-
-                    this.actions.sendKillBroadcast(broadcast);
-                    for (const cb of this.killBroadcastCallbacks) cb(broadcast);
-
-                    if (attackerId === this.clientId) {
-                        this.handleKillAwarded({ victimName: bot.name, kills: this.peers[this.clientId].kills });
-                    }
-                }
-            });
-
-            onKillBroadcast((data) => {
-                if (!data) return;
-                if (this.peers[data.killerId]) {
-                    this.peers[data.killerId].kills = (this.peers[data.killerId].kills || 0) + 1;
-                }
-                for (const cb of this.killBroadcastCallbacks) {
-                    cb(data);
-                }
-                if (data.killerId === this.clientId) {
-                    this.handleKillAwarded({ victimName: data.victimName, kills: this.peers[this.clientId]?.kills || 1 });
-                }
-            });
-
-            onBotTick((bots) => {
-                if (this.isHost || this.isServerConnected || !bots) return;
-                this.localPresences = { ...bots, ...this.localPresences };
-                for (const cb of this.presenceCallbacks) {
-                    cb(this.localPresences);
-                }
-            });
+            if (this.localPresences[this.clientId]) {
+                sendPresence(this.localPresences[this.clientId], peerId);
+            }
 
             this.updateHostElection();
-        } catch (err) {
-            console.warn('[WebsimSocket] P2P Room init error:', err);
+            this.notifyStatus();
+        });
+
+        room.onPeerLeave((peerId) => {
+            delete this.peers[peerId];
+            delete this.localPresences[peerId];
+            this.updateHostElection();
+            this.notifyStatus();
+            for (const cb of this.presenceCallbacks) cb(this.localPresences);
+        });
+
+        onPeerInfo((data, peerId) => {
+            if (!data) return;
+            this.isP2PConnected = true;
+            this.peers[peerId] = {
+                id: peerId,
+                username: data.username || 'Player',
+                kills: data.kills || 0
+            };
+            this.notifyStatus();
+        });
+
+        onPresence((data, peerId) => {
+            if (this.isServerConnected) return;
+            this.handleIncomingPresence(peerId, data);
+        });
+
+        onAttackPlayer((data, attackerId) => {
+            if (!data || data.targetId !== this.clientId) return;
+            this.handleIncomingDamage({
+                attackerId,
+                attackerName: this.peers[attackerId]?.username || 'Player',
+                damage: data.damage,
+                hitType: data.hitType,
+                knockbackAngle: data.angle,
+                knockbackForce: data.knockbackForce
+            });
+        });
+
+        onAttackBot((data, attackerId) => {
+            this.handleBotAttackFromPeer(data, attackerId);
+        });
+
+        onKillBroadcast((data) => {
+            this.handleIncomingKill(data);
+        });
+
+        onBotTick((bots) => {
+            if (this.isHost || this.isServerConnected || !bots) return;
+            this.localPresences = { ...bots, ...this.localPresences };
+            for (const cb of this.presenceCallbacks) cb(this.localPresences);
+        });
+    }
+
+    handleIncomingPresence(peerId, data) {
+        if (!data) return;
+        data.id = peerId;
+        data.name = this.peers[peerId]?.username || data.name || 'Player';
+        this.localPresences[peerId] = data;
+        for (const cb of this.presenceCallbacks) {
+            cb(this.localPresences);
+        }
+    }
+
+    handleIncomingDamage(data) {
+        for (const cb of this.damageCallbacks) cb(data);
+        if (typeof window !== 'undefined' && window.game && window.game.healthSystem) {
+            window.game.healthSystem.processDamage(
+                data.hitType || 'bodyHit',
+                data.damage || 20,
+                data.attackerId
+            );
+            if (data.knockbackAngle !== undefined && window.game.creature && window.game.creature.velocity) {
+                const force = data.knockbackForce || 5;
+                window.game.creature.velocity.x += Math.cos(data.knockbackAngle) * force;
+                window.game.creature.velocity.y += Math.sin(data.knockbackAngle) * force;
+            }
+        }
+    }
+
+    handleIncomingKill(data) {
+        if (!data) return;
+        if (this.peers[data.killerId]) {
+            this.peers[data.killerId].kills = (this.peers[data.killerId].kills || 0) + 1;
+        }
+        for (const cb of this.killBroadcastCallbacks) {
+            cb(data);
+        }
+        if (data.killerId === this.clientId) {
+            this.handleKillAwarded({
+                victimName: data.victimName,
+                kills: this.peers[this.clientId]?.kills || 1
+            });
+        }
+    }
+
+    handleKillAwarded(data) {
+        for (const cb of this.killAwardedCallbacks) cb(data);
+        if (typeof window !== 'undefined' && window.game && window.game.creature) {
+            window.game.creature.kills = data.kills;
+            if (this.peers[this.clientId]) {
+                this.peers[this.clientId].kills = data.kills;
+            }
+            if (window.game.playerStats) {
+                window.game.playerStats.updateCurrentKills(data.kills);
+            }
+            if (window.game.skinUnlockSystem && window.game.creature.type) {
+                window.game.skinUnlockSystem.trackKill(window.game.creature.type);
+            }
+            window.game.updateLeaderboard();
+        }
+    }
+
+    handleBotAttackFromPeer(data, attackerId) {
+        if (!this.isHost || !data || !data.botId) return;
+        const bot = this.serverBots.find(b => b.id === data.botId);
+        if (!bot || !bot.isAlive) return;
+
+        bot.health -= (data.damage || 25);
+        if (bot.health <= 0) {
+            bot.health = 0;
+            bot.isAlive = false;
+            bot.respawnTime = Date.now() + 5000;
+
+            const killerName = this.peers[attackerId]?.username || 'Player';
+            if (this.peers[attackerId]) {
+                this.peers[attackerId].kills = (this.peers[attackerId].kills || 0) + 1;
+            }
+
+            const broadcast = {
+                killerId: attackerId,
+                killerName,
+                victimId: bot.id,
+                victimName: bot.name
+            };
+
+            this.dispatchBroadcast('sendKillBroadcast', 'killBroadcast', broadcast);
+            for (const cb of this.killBroadcastCallbacks) cb(broadcast);
+
+            if (attackerId === this.clientId) {
+                this.handleKillAwarded({ victimName: bot.name, kills: this.peers[this.clientId].kills });
+            }
         }
     }
 
@@ -473,9 +626,8 @@ export class WebsimSocket {
             }
 
             this.localPresences = { ...formattedBots, ...this.localPresences };
-            if (this.actions?.sendBotTick) {
-                this.actions.sendBotTick(formattedBots);
-            }
+            this.dispatchBroadcast('sendBotTick', 'botTick', { bots: formattedBots });
+
             for (const cb of this.presenceCallbacks) {
                 cb(this.localPresences);
             }
@@ -489,43 +641,58 @@ export class WebsimSocket {
         }
     }
 
-    handleIncomingDamage(data) {
-        for (const cb of this.damageCallbacks) cb(data);
-        if (typeof window !== 'undefined' && window.game && window.game.healthSystem) {
-            window.game.healthSystem.processDamage(
-                data.hitType || 'bodyHit',
-                data.damage || 20,
-                data.attackerId
-            );
-            if (data.knockbackAngle !== undefined && window.game.creature && window.game.creature.velocity) {
-                const force = data.knockbackForce || 5;
-                window.game.creature.velocity.x += Math.cos(data.knockbackAngle) * force;
-                window.game.creature.velocity.y += Math.sin(data.knockbackAngle) * force;
-            }
+    dispatchBroadcast(actionName, bcType, payload) {
+        // 1. Trystero Nostr
+        if (this.p2pActions.nostr?.[actionName]) {
+            try { this.p2pActions.nostr[actionName](payload); } catch (e) {}
+        }
+        // 2. Trystero Torrent
+        if (this.p2pActions.torrent?.[actionName]) {
+            try { this.p2pActions.torrent[actionName](payload); } catch (e) {}
+        }
+        // 3. BroadcastChannel (cross-tab local)
+        if (this.broadcastChannel) {
+            try {
+                this.broadcastChannel.postMessage({
+                    type: bcType,
+                    fromId: this.clientId,
+                    data: payload,
+                    ...(payload && typeof payload === 'object' ? payload : {})
+                });
+            } catch (e) {}
         }
     }
 
-    handleKillAwarded(data) {
-        for (const cb of this.killAwardedCallbacks) cb(data);
-        if (typeof window !== 'undefined' && window.game && window.game.creature) {
-            window.game.creature.kills = data.kills;
-            if (this.peers[this.clientId]) {
-                this.peers[this.clientId].kills = data.kills;
-            }
-            if (window.game.playerStats) {
-                window.game.playerStats.updateCurrentKills(data.kills);
-            }
-            if (window.game.skinUnlockSystem && window.game.creature.type) {
-                window.game.skinUnlockSystem.trackKill(window.game.creature.type);
-            }
+    dispatchDirect(actionName, bcType, payload, targetId) {
+        if (this.p2pActions.nostr?.[actionName]) {
+            try { this.p2pActions.nostr[actionName](payload, targetId); } catch (e) {}
         }
+        if (this.p2pActions.torrent?.[actionName]) {
+            try { this.p2pActions.torrent[actionName](payload, targetId); } catch (e) {}
+        }
+        if (this.broadcastChannel) {
+            try {
+                this.broadcastChannel.postMessage({
+                    type: bcType,
+                    fromId: this.clientId,
+                    targetId,
+                    data: payload,
+                    ...(payload && typeof payload === 'object' ? payload : {})
+                });
+            } catch (e) {}
+        }
+    }
+
+    getOnlineCount() {
+        const humanPeersCount = Math.max(1, Object.keys(this.peers).length);
+        const aliveBots = this.serverBots ? this.serverBots.filter(b => b.isAlive).length : 6;
+        return humanPeersCount + aliveBots;
     }
 
     notifyStatus() {
-        const count = Math.max(1, Object.keys(this.peers).length);
-        const isOnline = this.isServerConnected || this.isP2PConnected || count > 1 || this.trysteroRoom !== null;
+        const count = this.getOnlineCount();
         const status = {
-            connected: isOnline,
+            connected: true,
             connecting: false,
             playersCount: count,
             peers: this.peers
@@ -570,19 +737,16 @@ export class WebsimSocket {
             if (this.socket && this.socket.connected) {
                 this.socket.emit('updatePresence', data);
             }
-            if (this.actions?.sendPresence) {
-                this.actions.sendPresence(data);
-            }
+            this.dispatchBroadcast('sendPresence', 'presence', data);
         }
     }
 
     attackPlayer(targetId, damage, hitType = 'bodyHit', angle = 0, knockbackForce = 6) {
+        const payload = { targetId, damage, hitType, angle, knockbackForce };
         if (this.socket && this.socket.connected) {
-            this.socket.emit('attackPlayer', { targetId, damage, hitType, angle, knockbackForce });
+            this.socket.emit('attackPlayer', payload);
         }
-        if (this.actions?.sendAttackPlayer) {
-            this.actions.sendAttackPlayer({ targetId, damage, hitType, angle, knockbackForce }, targetId);
-        }
+        this.dispatchDirect('sendAttackPlayer', 'attackPlayer', payload, targetId);
     }
 
     attackBot(botId, damage, hitType = 'bodyHit', angle = 0) {
@@ -605,20 +769,20 @@ export class WebsimSocket {
                         victimId: bot.id,
                         victimName: bot.name
                     };
-                    if (this.actions?.sendKillBroadcast) this.actions.sendKillBroadcast(broadcast);
+                    this.dispatchBroadcast('sendKillBroadcast', 'killBroadcast', broadcast);
                     for (const cb of this.killBroadcastCallbacks) cb(broadcast);
                     this.handleKillAwarded({ victimName: bot.name, kills });
                 }
             }
-        } else if (this.actions?.sendAttackBot) {
-            this.actions.sendAttackBot({ botId, damage, hitType, angle });
+        } else {
+            this.dispatchBroadcast('sendAttackBot', 'attackBot', { botId, damage, hitType, angle });
         }
     }
 
     notifyDeath(killerId) {
         if (this.socket && this.socket.connected) {
             this.socket.emit('playerDied', { killerId });
-        } else if (this.actions?.sendKillBroadcast) {
+        } else {
             const killerName = (killerId && this.peers[killerId]?.username) || 'Ocean';
             const broadcast = {
                 killerId: killerId || null,
@@ -626,7 +790,7 @@ export class WebsimSocket {
                 victimId: this.clientId,
                 victimName: this.username
             };
-            this.actions.sendKillBroadcast(broadcast);
+            this.dispatchBroadcast('sendKillBroadcast', 'killBroadcast', broadcast);
             for (const cb of this.killBroadcastCallbacks) cb(broadcast);
         }
     }
@@ -648,13 +812,12 @@ export class WebsimSocket {
         if (this.socket && this.socket.connected) {
             this.socket.emit('setUsername', { username: clean });
         }
-        if (this.actions?.sendPeerInfo) {
-            this.actions.sendPeerInfo({
-                id: this.clientId,
-                username: clean,
-                kills: this.peers[this.clientId]?.kills || 0
-            });
-        }
+        const info = {
+            id: this.clientId,
+            username: clean,
+            kills: this.peers[this.clientId]?.kills || 0
+        };
+        this.dispatchBroadcast('sendPeerInfo', 'peerSync', info);
         this.notifyStatus();
     }
 
