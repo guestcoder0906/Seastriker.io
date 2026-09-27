@@ -181,16 +181,6 @@ export class StartScreen {
         });
         buttonContainer.appendChild(statsButton);
         
-        // Add skins button
-        const skinsButton = document.createElement('button');
-        skinsButton.id = 'skins-button';
-        skinsButton.textContent = 'SKINS';
-        skinsButton.addEventListener('click', () => {
-            this.hide();
-            this.game.skinsScreen.show();
-        });
-        buttonContainer.appendChild(skinsButton);
-        
         this.container.appendChild(buttonContainer);
 
         // Create instructions section

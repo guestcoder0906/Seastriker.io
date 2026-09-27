@@ -126,12 +126,6 @@ export class SkinSystem {
         
         skin.unlocked = true;
         this.saveSkinData();
-        
-        // Create notification about unlocked skin
-        if (this.game.upgradeSystem) {
-            this.game.upgradeSystem.createNotification(`Unlocked skin: ${skin.name}!`, this.game.creature);
-        }
-        
         return true;
     }
 }

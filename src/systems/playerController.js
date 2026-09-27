@@ -84,32 +84,10 @@ export class PlayerController {
                 this.game.skinUnlockSystem.trackKill(this.game.creature.type);
             }
             
-            // Check if the killed player had upgrades to transfer
-            if (updateRequest.killedUpgrades) {
-                // Apply the killed player's upgrades to the killer
-                for (const [key, value] of Object.entries(updateRequest.killedUpgrades)) {
-                    if (value && !this.game.creature.upgrades[key]) {
-                        this.game.creature.upgrades[key] = true;
-                        this.game.upgradeSystem.applyUpgrade(this.game.creature, key);
-                        const upgradeInfo = this.game.upgradeSystem.upgrades[key];
-                        if (upgradeInfo) {
-                            this.game.upgradeSystem.createNotification(`Absorbed: ${upgradeInfo.effect}`, this.game.creature);
-                        }
-                    }
-                }
-            }
-            
-            // Update our presence with new kill count and upgrades
+            // Update our presence with new kill count
             this.game.room.updatePresence({
-                kills: this.game.creature.kills,
-                upgrades: this.game.creature.upgrades,
-                tuskLengthModifier: this.game.creature.tuskLengthModifier,
-                staminaCooldownModifier: this.game.creature.staminaCooldownModifier,
-                speedModifier: this.game.creature.speedModifier
+                kills: this.game.creature.kills
             });
-            
-            // Check for kill-based upgrades
-            this.game.upgradeSystem.checkUpgrades(this.game.creature);
         }
         else if (updateRequest.type === 'tentacleHit') {
             // Handle being caught in squid tentacles
@@ -220,35 +198,14 @@ export class PlayerController {
                     // Handle AI damage directly
                     const aiPlayer = this.game.aiController.aiPlayers[clientId];
                     if (aiPlayer) {
-                        // Store upgrades before processing damage (which might reset the AI)
-                        const aiUpgrades = {...aiPlayer.creature.upgrades};
-                        
                         const killed = this.game.aiHealthSystem.processAIDamage(
                             aiPlayer, 
                             'lethal',
                             collisionResult.damage, 
                             this.game.creature.id
                         );
-                        
-                        if (killed) {
-                            // Transfer AI's upgrades to the player
-                            for (const [key, value] of Object.entries(aiUpgrades)) {
-                                if (value && !this.game.creature.upgrades[key]) {
-                                    this.game.creature.upgrades[key] = true;
-                                    this.game.upgradeSystem.applyUpgrade(this.game.creature, key);
-                                    const upgradeInfo = this.game.upgradeSystem.upgrades[key];
-                                    if (upgradeInfo) {
-                                        this.game.upgradeSystem.createNotification(`Absorbed: ${upgradeInfo.effect}`, this.game.creature);
-                                    }
-                                }
-                            }
-                        }
                     }
                 } else {
-                    // Get upgrades from the target player
-                    const targetPresence = this.game.playerPresences[clientId];
-                    const targetUpgrades = targetPresence?.upgrades || {};
-                    
                     // Request the other player to update their presence
                     this.game.room.requestPresenceUpdate(clientId, {
                         type: 'collision',
@@ -259,15 +216,10 @@ export class PlayerController {
                     });
                 }
                 
-                // Update our presence with new kill count and check for upgrades
-                this.game.upgradeSystem.checkUpgrades(this.game.creature);
+                // Update our presence with new kill count
                 this.game.room.updatePresence({
                     ...this.game.creature.getPresenceData(),
-                    kills: this.game.creature.kills,
-                    upgrades: this.game.creature.upgrades,
-                    tuskLengthModifier: this.game.creature.tuskLengthModifier,
-                    staminaCooldownModifier: this.game.creature.staminaCooldownModifier,
-                    speedModifier: this.game.creature.speedModifier
+                    kills: this.game.creature.kills
                 });
             }
             else {
@@ -329,9 +281,6 @@ export class PlayerController {
                     // Handle AI damage directly
                     const aiPlayer = this.game.aiController.aiPlayers[clientId];
                     if (aiPlayer) {
-                        // Store upgrades before processing damage
-                        const aiUpgrades = {...aiPlayer.creature.upgrades};
-                        
                         const killed = this.game.aiHealthSystem.processAIDamage(
                             aiPlayer, 
                             'lethal',
@@ -342,17 +291,7 @@ export class PlayerController {
                         if (killed) {
                             if (!this.game._processedKills) this.game._processedKills = {};
                             this.game._processedKills[clientId] = true;
-                            // Transfer AI's upgrades to the player
-                            for (const [key, value] of Object.entries(aiUpgrades)) {
-                                if (value && !this.game.creature.upgrades[key]) {
-                                    this.game.creature.upgrades[key] = true;
-                                    this.game.upgradeSystem.applyUpgrade(this.game.creature, key);
-                                    const upgradeInfo = this.game.upgradeSystem.upgrades[key];
-                                    if (upgradeInfo) {
-                                        this.game.upgradeSystem.createNotification(`Absorbed: ${upgradeInfo.effect}`, this.game.creature);
-                                    }
-                                }
-                            }
+                            this.game.creature.kills++;
                         }
                     }
                 } else {
@@ -367,15 +306,10 @@ export class PlayerController {
                     }
                 }
                 
-                // Update our presence with new kill count and check for upgrades
-                this.game.upgradeSystem.checkUpgrades(this.game.creature);
+                // Update our presence with new kill count
                 this.game.room.updatePresence({
                     ...this.game.creature.getPresenceData(),
-                    kills: this.game.creature.kills,
-                    upgrades: this.game.creature.upgrades,
-                    tuskLengthModifier: this.game.creature.tuskLengthModifier,
-                    staminaCooldownModifier: this.game.creature.staminaCooldownModifier,
-                    speedModifier: this.game.creature.speedModifier
+                    kills: this.game.creature.kills
                 });
             }
             else {
@@ -396,25 +330,9 @@ export class PlayerController {
                             if (!this.game._processedKills) this.game._processedKills = {};
                             this.game._processedKills[clientId] = true;
                             this.game.creature.kills++;
-                            // Transfer AI's upgrades to the player
-                            for (const [key, value] of Object.entries(aiUpgrades)) {
-                                if (value && !this.game.creature.upgrades[key]) {
-                                    this.game.creature.upgrades[key] = true;
-                                    this.game.upgradeSystem.applyUpgrade(this.game.creature, key);
-                                    const upgradeInfo = this.game.upgradeSystem.upgrades[key];
-                                    if (upgradeInfo) {
-                                        this.game.upgradeSystem.createNotification(`Absorbed: ${upgradeInfo.effect}`, this.game.creature);
-                                    }
-                                }
-                            }
-                            this.game.upgradeSystem.checkUpgrades(this.game.creature);
                             this.game.room.updatePresence({
                                 ...this.game.creature.getPresenceData(),
-                                kills: this.game.creature.kills,
-                                upgrades: this.game.creature.upgrades,
-                                tuskLengthModifier: this.game.creature.tuskLengthModifier,
-                                staminaCooldownModifier: this.game.creature.staminaCooldownModifier,
-                                speedModifier: this.game.creature.speedModifier
+                                kills: this.game.creature.kills
                             });
                         }
                     }
@@ -477,17 +395,9 @@ export class PlayerController {
                         );
                         
                         if (killed) {
-                            // Transfer AI's upgrades to the player
-                            for (const [key, value] of Object.entries(aiUpgrades)) {
-                                if (value && !this.game.creature.upgrades[key]) {
-                                    this.game.creature.upgrades[key] = true;
-                                    this.game.upgradeSystem.applyUpgrade(this.game.creature, key);
-                                    const upgradeInfo = this.game.upgradeSystem.upgrades[key];
-                                    if (upgradeInfo) {
-                                        this.game.upgradeSystem.createNotification(`Absorbed: ${upgradeInfo.effect}`, this.game.creature);
-                                    }
-                                }
-                            }
+                            if (!this.game._processedKills) this.game._processedKills = {};
+                            this.game._processedKills[clientId] = true;
+                            this.game.creature.kills++;
                         }
                     }
                 } else {
@@ -502,12 +412,10 @@ export class PlayerController {
                     }
                 }
                 
-                // Update our presence with new kill count and check for upgrades
-                this.game.upgradeSystem.checkUpgrades(this.game.creature);
+                // Update our presence with new kill count
                 this.game.room.updatePresence({
                     ...this.game.creature.getPresenceData(),
-                    kills: this.game.creature.kills,
-                    upgrades: this.game.creature.upgrades
+                    kills: this.game.creature.kills
                 });
             }
             else {

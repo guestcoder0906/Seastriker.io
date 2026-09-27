@@ -43,24 +43,9 @@ export class OctopusAbilities {
         return true;
     }
     
-    // Apply upgraded cooldown based on stamina upgrades
+    // Default camouflage modifier (no upgrades)
     applyCamouflageUpgrades(squid) {
-        // Base modifier is 1.0 (no change)
-        let cooldownModifier = 1.0;
-        
-        // First stamina upgrade reduces cooldown by 1 second
-        if (squid.upgrades && squid.upgrades.staminaCooldown1) {
-            cooldownModifier = CONFIG.OCTOPUS_CAMOUFLAGE_COOLDOWN_UPGRADE_1;
-        }
-        
-        // Second stamina upgrade reduces cooldown by another second
-        if (squid.upgrades && squid.upgrades.staminaCooldown2) {
-            cooldownModifier = CONFIG.OCTOPUS_CAMOUFLAGE_COOLDOWN_UPGRADE_2;
-        }
-        
-        // Apply the modifier
-        squid.camouflageModifier = cooldownModifier;
-        
+        squid.camouflageModifier = 1.0;
         return squid;
     }
 

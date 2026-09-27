@@ -532,7 +532,7 @@ body {
     flex-wrap: wrap;
 }
 
-#stats-button, #skins-button {
+#stats-button {
     background-color: #3498db;
     color: white;
     border: none;
@@ -545,7 +545,7 @@ body {
     box-shadow: 0 3px 10px rgba(0, 0, 0, 0.2);
 }
 
-#stats-button:hover, #skins-button:hover {
+#stats-button:hover {
     background-color: #2980b9;
     transform: scale(1.03);
 }

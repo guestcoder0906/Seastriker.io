@@ -139,11 +139,6 @@ export class GameRenderer {
             this.drawCreatureByType(ctx, narwhal, true);
         }
         
-        // Draw upgrade notifications
-        if (this.game.upgradeSystem) {
-            this.game.upgradeSystem.drawNotifications(ctx);
-        }
-        
         // After everything has been drawn, add reef overlay if player is hidden
         if (narwhal && narwhal.isHiddenInReef && this.game.coralReefEffectManager) {
             this.game.coralReefEffectManager.drawHiddenOverlay(ctx);

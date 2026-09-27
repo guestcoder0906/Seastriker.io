@@ -43,14 +43,6 @@ export class AIHealthSystem {
                     const attackerAI = this.game.aiController.aiPlayers[attackerClientId];
                     if (attackerAI && attackerAI.creature) {
                         attackerAI.creature.kills++;
-
-                        this.game.aiUpgradeSystem.transferUpgradesFromKill(
-                            attackerAI.creature,
-                            narwhal.upgrades
-                        );
-
-                        this.game.aiUpgradeSystem.checkAIUpgrades(attackerAI.creature);
-
                         this.game.aiController.aiPresences[attackerClientId] = attackerAI.creature.getPresenceData();
                         this.game.playerPresences[attackerClientId] = this.game.aiController.aiPresences[attackerClientId];
                     }
@@ -59,8 +51,7 @@ export class AIHealthSystem {
                         this.game.room.requestPresenceUpdate(attackerClientId, {
                             type: 'incrementKills',
                             amount: 1,
-                            targetId: narwhal.id,
-                            killedUpgrades: narwhal.upgrades
+                            targetId: narwhal.id
                         });
                     }
                 }

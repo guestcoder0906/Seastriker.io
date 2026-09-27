@@ -210,10 +210,7 @@ export class AIController {
     }
 
     checkUpgrades(ai, aiId) {
-        // Check for upgrades based on kill count
-        this.game.upgradeSystem.checkUpgrades(ai.creature);
-        
-        // Apply speed and stamina upgrades by updating creature speed settings
+        // Keep default creature speed and cooldown settings (no upgrades)
         this.narwhalSpeed.updateSpeedSettings(ai.creature);
     }
 
@@ -577,9 +574,6 @@ export class AIController {
 
                     if (killed) {
                         ai.creature.kills++;
-                        const targetUpgrades = this.game.creature ? (this.game.creature.upgrades || {}) : {};
-                        this.game.aiUpgradeSystem.transferUpgradesFromKill(ai.creature, targetUpgrades);
-                        this.game.aiUpgradeSystem.checkAIUpgrades(ai.creature);
                         this.aiPresences[aiId] = ai.creature.getPresenceData();
                         this.game.playerPresences[aiId] = this.aiPresences[aiId];
                     }
@@ -595,7 +589,6 @@ export class AIController {
                     }
                 } else {
                     if (targetAI) {
-                        const targetUpgrades = {...targetAI.creature.upgrades};
                         const killed = this.game.aiHealthSystem.processAIDamage(
                             targetAI,
                             collisionResult.type,
@@ -604,11 +597,6 @@ export class AIController {
                         );
                         if (killed) {
                             ai.creature.kills++;
-                            this.game.aiUpgradeSystem.transferUpgradesFromKill(
-                                ai.creature, 
-                                targetUpgrades
-                            );
-                            this.game.aiUpgradeSystem.checkAIUpgrades(ai.creature);
                             this.aiPresences[aiId] = ai.creature.getPresenceData();
                             this.game.playerPresences[aiId] = this.aiPresences[aiId];
                         }

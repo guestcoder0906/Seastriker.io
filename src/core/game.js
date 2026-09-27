@@ -237,8 +237,6 @@ class NarwhaleGame {
         }
         this.aiHealthSystem.updateAIHealth();
         
-        this.upgradeSystem.updateNotifications();
-        
         this.inkSystem.updateInkClouds();
         
         this.narwhalCollisions.cleanupCollisionHistory();
@@ -246,8 +244,6 @@ class NarwhaleGame {
         if (this.gameActive && this.creature && this.creature.isAlive) {
             const targetX = this.camera.x + this.mouse.x;
             const targetY = this.camera.y + this.mouse.y;
-            
-            this.upgradeSystem.checkUpgrades(this.creature);
             
             this.narwhalSpeed.updateSpeedSettings(this.creature);
             

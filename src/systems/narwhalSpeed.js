@@ -1,47 +1,33 @@
-import { CONFIG } from '../core/config.js';
-
 export class NarwhalSpeed {
     constructor() {}
     
-    // Apply speed modifier to narwhal's current speed
-    applySpeedModifier(narwhal, currentSpeed) {
+    // Apply speed modifier to creature's current speed
+    applySpeedModifier(creature, currentSpeed) {
         let speed = currentSpeed;
-        // If narwhal has a speed modifier defined, apply it
-        if (narwhal.speedModifier && narwhal.speedModifier > 1.0) {
-            speed = currentSpeed * narwhal.speedModifier;
+        if (creature.speedModifier && creature.speedModifier > 1.0) {
+            speed = currentSpeed * creature.speedModifier;
         }
         // Apply ink slow effect (50% speed penalty)
-        if (narwhal.isInked) {
+        if (creature.isInked) {
             speed *= 0.5;
         }
         // Apply tentacle slow effect (35% speed penalty)
-        if (narwhal._tentacleSlowed) {
+        if (creature._tentacleSlowed) {
             speed *= 0.65;
         }
         return speed;
     }
     
-    // Initialize a new narwhal with default speed settings
-    initializeNarwhal(narwhal) {
-        // Set default speed modifier (1.0 = normal speed)
-        narwhal.speedModifier = 1.0;
-        narwhal.staminaCooldownModifier = 1.0;
+    // Initialize a new creature with default speed settings
+    initializeNarwhal(creature) {
+        creature.speedModifier = 1.0;
+        creature.staminaCooldownModifier = 1.0;
     }
     
-    // Update speed and cooldown settings based on upgrades
-    updateSpeedSettings(narwhal) {
-        if (narwhal.upgrades.speedBoost) {
-            narwhal.speedModifier = CONFIG.SPEED_UPGRADE;
-        }
-        
-        if (narwhal.upgrades.staminaCooldown1) {
-            narwhal.staminaCooldownModifier = Math.min(narwhal.staminaCooldownModifier, CONFIG.STAMINA_COOLDOWN_UPGRADE_1);
-        }
-        
-        if (narwhal.upgrades.staminaCooldown2) {
-            narwhal.staminaCooldownModifier = Math.min(narwhal.staminaCooldownModifier, CONFIG.STAMINA_COOLDOWN_UPGRADE_2);
-        }
-        
-        return narwhal;
+    // Update speed and cooldown settings (upgrades removed)
+    updateSpeedSettings(creature) {
+        creature.speedModifier = 1.0;
+        creature.staminaCooldownModifier = 1.0;
+        return creature;
     }
 }
