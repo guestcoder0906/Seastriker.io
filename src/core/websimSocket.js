@@ -14,10 +14,15 @@ export class WebsimSocket {
         this.localPresences = {};
         this.presenceCallbacks = [];
         this.presenceRequestCallbacks = [];
-        this.channel = null;
+        this.damageCallbacks = [];
+        this.killBroadcastCallbacks = [];
+        this.killAwardedCallbacks = [];
+        this.statusCallbacks = [];
         this.isServerConnected = false;
+        this.lastPresenceEmit = 0;
+        this.pendingPresenceData = null;
 
-        // Try to load cached room state from localStorage (persists leaderboard on Vercel/offline)
+        // Try to load cached room state from localStorage
         try {
             const saved = localStorage.getItem('narwhal_room_state');
             if (saved) {
@@ -26,115 +31,51 @@ export class WebsimSocket {
                     this.roomState = { ...this.roomState, ...parsed };
                 }
             }
-        } catch (e) {
-            // Ignore JSON parse errors
-        }
+        } catch (e) {}
     }
 
     async initialize() {
         return new Promise((resolve) => {
-            let resolved = false;
-            const completeInit = () => {
-                if (resolved) return;
-                resolved = true;
-                resolve();
-            };
-
-            // Retrieve username from local storage or create a fallback
             let username = null;
             try {
                 username = localStorage.getItem('username');
             } catch (e) {}
             
             if (!username) {
-                username = "Player_" + Math.floor(Math.random() * 1000);
+                username = "Player_" + Math.floor(100 + Math.random() * 900);
                 try {
                     localStorage.setItem('username', username);
                 } catch (e) {}
             }
 
-            // Always populate local peer info immediately so game can start even if offline or on Vercel
-            this.peers[this.clientId] = { id: this.clientId, username };
+            this.peers[this.clientId] = { id: this.clientId, username, kills: 0 };
 
-            // Setup cross-tab sync via BroadcastChannel (works on modern browsers, 100% offline & Vercel compatible)
-            if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
-                try {
-                    this.channel = new BroadcastChannel('sea_striker_network');
-                    this.channel.onmessage = (event) => {
-                        const msg = event.data;
-                        if (!msg || typeof msg !== 'object') return;
-
-                        if (msg.type === 'peerJoined' && msg.peer) {
-                            this.peers[msg.peer.id] = msg.peer;
-                            if (msg.peer.id !== this.clientId) {
-                                this.channel.postMessage({
-                                    type: 'peerSync',
-                                    peer: this.peers[this.clientId],
-                                    presence: this.localPresences[this.clientId]
-                                });
-                            }
-                        } else if (msg.type === 'peerSync' && msg.peer) {
-                            this.peers[msg.peer.id] = msg.peer;
-                            if (msg.presence) {
-                                this.localPresences[msg.peer.id] = msg.presence;
-                                for (const cb of this.presenceCallbacks) {
-                                    cb({ ...this.localPresences });
-                                }
-                            }
-                        } else if (msg.type === 'peerLeft' && msg.id) {
-                            delete this.peers[msg.id];
-                            delete this.localPresences[msg.id];
-                            for (const cb of this.presenceCallbacks) {
-                                cb({ ...this.localPresences });
-                            }
-                        } else if (msg.type === 'presence' && msg.clientId && msg.data) {
-                            this.localPresences[msg.clientId] = msg.data;
-                            for (const cb of this.presenceCallbacks) {
-                                cb({ ...this.localPresences });
-                            }
-                        } else if (msg.type === 'presenceUpdateRequest' && msg.targetId === this.clientId) {
-                            for (const cb of this.presenceRequestCallbacks) {
-                                cb(msg.updateRequest, msg.fromClientId);
-                            }
-                        } else if (msg.type === 'roomStateUpdate' && msg.data) {
-                            this.roomState = { ...this.roomState, ...msg.data };
-                        }
-                    };
-
-                    this.channel.postMessage({
-                        type: 'peerJoined',
-                        peer: this.peers[this.clientId]
-                    });
-
-                    window.addEventListener('beforeunload', () => {
-                        if (this.channel) {
-                            this.channel.postMessage({ type: 'peerLeft', id: this.clientId });
-                        }
-                    });
-                } catch (e) {
-                    console.warn('[WebsimSocket] BroadcastChannel not available:', e);
-                }
-            }
-
-            // Fallback timer: If socket does not connect within 1s (e.g. on static Vercel deployment), start immediately!
-            const timeoutId = setTimeout(() => {
-                if (!this.isServerConnected) {
-                    completeInit();
-                }
-            }, 1000);
-
-            // Attempt to connect to Socket.IO backend if one exists (e.g. full-stack server)
             try {
                 this.socket = io({
                     auth: { username },
-                    timeout: 800,
-                    reconnectionAttempts: 2,
-                    transports: ['websocket', 'polling']
+                    transports: ['websocket', 'polling'],
+                    reconnection: true,
+                    reconnectionAttempts: Infinity,
+                    reconnectionDelay: 1000,
+                    reconnectionDelayMax: 5000,
+                    timeout: 10000
+                });
+
+                this.socket.on('connect', () => {
+                    this.isServerConnected = true;
+                    if (this.socket.id) {
+                        this.clientId = this.socket.id;
+                        if (typeof window !== 'undefined' && window.game && window.game.creature) {
+                            window.game.creature.id = this.clientId;
+                        }
+                    }
+                    this.notifyStatus(true);
+                    this.socket.emit('setUsername', { username });
+                    resolve();
                 });
 
                 this.socket.on('init', (data) => {
                     this.isServerConnected = true;
-                    clearTimeout(timeoutId);
                     if (data.id) {
                         this.clientId = data.id;
                         if (typeof window !== 'undefined' && window.game && window.game.creature) {
@@ -143,10 +84,45 @@ export class WebsimSocket {
                     }
                     if (data.roomState) this.roomState = data.roomState;
                     if (data.peers) this.peers = data.peers;
-                    completeInit();
+                    if (data.bots) {
+                        this.localPresences = { ...data.bots, ...this.localPresences };
+                    }
+                    this.notifyStatus(true);
+                    resolve();
+                });
+
+                // 20Hz network tick from server (authoritative positions of players and bots)
+                this.socket.on('networkTick', (data) => {
+                    if (!data) return;
+                    if (data.peers) {
+                        this.peers = data.peers;
+                    }
+                    
+                    const combined = {
+                        ...(data.bots || {}),
+                        ...(data.players || {})
+                    };
+
+                    this.localPresences = combined;
+
+                    for (const cb of this.presenceCallbacks) {
+                        cb(combined);
+                    }
+
+                    this.notifyStatus(this.isServerConnected);
+                });
+
+                this.socket.on('presence', (presences) => {
+                    this.localPresences = { ...this.localPresences, ...presences };
+                    for (const cb of this.presenceCallbacks) {
+                        cb(this.localPresences);
+                    }
                 });
 
                 this.socket.on('takeDamage', (data) => {
+                    for (const cb of this.damageCallbacks) {
+                        cb(data);
+                    }
                     if (typeof window !== 'undefined' && window.game && window.game.healthSystem) {
                         window.game.healthSystem.processDamage(
                             data.hitType || 'bodyHit',
@@ -161,19 +137,38 @@ export class WebsimSocket {
                     }
                 });
 
+                this.socket.on('killBroadcast', (data) => {
+                    for (const cb of this.killBroadcastCallbacks) {
+                        cb(data);
+                    }
+                });
+
+                this.socket.on('killAwarded', (data) => {
+                    for (const cb of this.killAwardedCallbacks) {
+                        cb(data);
+                    }
+                    if (typeof window !== 'undefined' && window.game && window.game.creature) {
+                        window.game.creature.kills = data.kills;
+                        if (window.game.playerStats) {
+                            window.game.playerStats.updateCurrentKills(data.kills);
+                        }
+                        if (window.game.skinUnlockSystem && window.game.creature.type) {
+                            window.game.skinUnlockSystem.trackKill(window.game.creature.type);
+                        }
+                    }
+                });
+
                 this.socket.on('peerJoined', (peer) => {
                     this.peers[peer.id] = peer;
+                    this.notifyStatus(true);
                 });
 
                 this.socket.on('peerLeft', (id) => {
                     delete this.peers[id];
                     delete this.localPresences[id];
-                });
-
-                this.socket.on('presence', (presences) => {
-                    this.localPresences = { ...presences };
+                    this.notifyStatus(true);
                     for (const cb of this.presenceCallbacks) {
-                        cb(presences);
+                        cb(this.localPresences);
                     }
                 });
 
@@ -187,16 +182,39 @@ export class WebsimSocket {
                     this.roomState = data;
                 });
 
+                this.socket.on('disconnect', () => {
+                    this.isServerConnected = false;
+                    this.notifyStatus(false);
+                });
+
                 this.socket.on('connect_error', () => {
-                    // Fail gracefully on static hosting (Vercel) without blocking game startup
-                    if (!this.isServerConnected) {
-                        completeInit();
-                    }
+                    this.isServerConnected = false;
+                    this.notifyStatus(false);
+                    // Resolve promise anyway so game UI renders and reconnects in background
+                    resolve();
                 });
             } catch (err) {
-                completeInit();
+                console.error("[WebsimSocket] Init error:", err);
+                resolve();
             }
+
+            // Safety timeout to ensure game never hangs on load
+            setTimeout(() => {
+                resolve();
+            }, 1500);
         });
+    }
+
+    notifyStatus(connected) {
+        const count = Object.keys(this.peers).length;
+        for (const cb of this.statusCallbacks) {
+            cb({ connected, playersCount: count, peers: this.peers });
+        }
+    }
+
+    subscribeStatus(callback) {
+        this.statusCallbacks.push(callback);
+        callback({ connected: this.isServerConnected, playersCount: Object.keys(this.peers).length, peers: this.peers });
     }
 
     subscribePresence(callback) {
@@ -207,31 +225,53 @@ export class WebsimSocket {
         this.presenceRequestCallbacks.push(callback);
     }
 
+    subscribeDamage(callback) {
+        this.damageCallbacks.push(callback);
+    }
+
+    subscribeKillBroadcast(callback) {
+        this.killBroadcastCallbacks.push(callback);
+    }
+
+    subscribeKillAwarded(callback) {
+        this.killAwardedCallbacks.push(callback);
+    }
+
     updatePresence(data) {
-        if (data) {
-            this.localPresences[this.clientId] = data;
+        if (!data) return;
+        this.localPresences[this.clientId] = data;
+
+        // Throttle emissions to ~30 FPS (every 33ms) to avoid saturating network
+        const now = performance.now();
+        if (now - this.lastPresenceEmit >= 33) {
+            this.lastPresenceEmit = now;
+            if (this.socket && this.socket.connected) {
+                this.socket.emit('updatePresence', data);
+            }
         }
-        if (this.socket && this.isServerConnected && this.socket.connected) {
-            this.socket.emit('updatePresence', data);
-        } else if (this.channel && data) {
-            this.channel.postMessage({
-                type: 'presence',
-                clientId: this.clientId,
-                data
-            });
+    }
+
+    attackPlayer(targetId, damage, hitType = 'bodyHit', angle = 0, knockbackForce = 6) {
+        if (this.socket && this.socket.connected) {
+            this.socket.emit('attackPlayer', { targetId, damage, hitType, angle, knockbackForce });
+        }
+    }
+
+    attackBot(botId, damage, hitType = 'bodyHit', angle = 0) {
+        if (this.socket && this.socket.connected) {
+            this.socket.emit('attackBot', { botId, damage, hitType, angle });
+        }
+    }
+
+    notifyDeath(killerId) {
+        if (this.socket && this.socket.connected) {
+            this.socket.emit('playerDied', { killerId });
         }
     }
 
     requestPresenceUpdate(targetId, updateRequest) {
-        if (this.socket && this.isServerConnected && this.socket.connected) {
+        if (this.socket && this.socket.connected) {
             this.socket.emit('requestPresenceUpdate', { targetId, updateRequest });
-        } else if (this.channel) {
-            this.channel.postMessage({
-                type: 'presenceUpdateRequest',
-                targetId,
-                updateRequest,
-                fromClientId: this.clientId
-            });
         }
     }
 
@@ -241,13 +281,8 @@ export class WebsimSocket {
             localStorage.setItem('narwhal_room_state', JSON.stringify(this.roomState));
         } catch (e) {}
 
-        if (this.socket && this.isServerConnected && this.socket.connected) {
+        if (this.socket && this.socket.connected) {
             this.socket.emit('updateRoomState', data);
-        } else if (this.channel) {
-            this.channel.postMessage({
-                type: 'roomStateUpdate',
-                data
-            });
         }
     }
 }

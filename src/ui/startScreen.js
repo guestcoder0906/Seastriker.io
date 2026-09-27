@@ -32,6 +32,14 @@ export class StartScreen {
         header.textContent = 'SeaStriker.io';
         this.container.appendChild(header);
 
+        // Multiplayer server status badge
+        const serverBadge = document.createElement('div');
+        serverBadge.id = 'ocean-server-badge';
+        serverBadge.className = 'server-status-badge connecting';
+        serverBadge.innerHTML = `<span class="status-pulse-dot yellow"></span> Connecting to Multiplayer Ocean...`;
+        this.serverBadge = serverBadge;
+        this.container.appendChild(serverBadge);
+
         // Create username input section
         const usernameContainer = document.createElement('div');
         usernameContainer.className = 'username-input-container';
@@ -282,11 +290,31 @@ export class StartScreen {
             }
         });
     }
+
+    updateNetworkStatus(status) {
+        if (!this.serverBadge) return;
+        const connected = status?.connected ?? (this.game.room && this.game.room.isServerConnected);
+        const count = status?.playersCount || (this.game.room?.peers ? Object.keys(this.game.room.peers).length : 1);
+
+        if (connected) {
+            this.serverBadge.className = 'server-status-badge online';
+            this.serverBadge.innerHTML = `<span class="status-pulse-dot"></span> <strong>Multiplayer Online:</strong> ${count} player${count === 1 ? '' : 's'} in ocean`;
+        } else {
+            this.serverBadge.className = 'server-status-badge connecting';
+            this.serverBadge.innerHTML = `<span class="status-pulse-dot yellow"></span> Connecting to Multiplayer Ocean...`;
+        }
+    }
     
     show() {
         this.visible = true;
         this.container.style.display = 'flex';
         this.updateCreatureNames();
+        if (this.game.room) {
+            this.updateNetworkStatus({
+                connected: this.game.room.isServerConnected,
+                playersCount: Object.keys(this.game.room.peers || {}).length
+            });
+        }
     }
     
     hide() {

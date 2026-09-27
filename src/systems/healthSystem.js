@@ -50,6 +50,9 @@ export class HealthSystem {
         creature.lastDamaged = now;
         
         // Decrease health
+        if (attackerClientId) {
+            this.game._lastAttackerId = attackerClientId;
+        }
         creature.health = Math.max(0, creature.health - effectiveDamage);
         
         // Check if dead
@@ -65,6 +68,9 @@ export class HealthSystem {
             
             // Broadcast death to network
             if (this.game.room) {
+                if (typeof this.game.room.notifyDeath === 'function') {
+                    this.game.room.notifyDeath(this.game._lastAttackerId);
+                }
                 this.game.room.updatePresence({
                     ...creature.getPresenceData(),
                     health: 0,

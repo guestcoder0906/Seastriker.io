@@ -817,3 +817,52 @@ body {
         right: calc(140px + max(env(safe-area-inset-right, 0px), 16px));
     }
 }
+
+/* Multiplayer Server Status Badge */
+.server-status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(15, 23, 42, 0.7);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    padding: 6px 16px;
+    border-radius: 20px;
+    font-size: 13px;
+    color: #e2e8f0;
+    margin-bottom: 12px;
+    backdrop-filter: blur(8px);
+    transition: all 0.3s ease;
+}
+
+.server-status-badge.online {
+    border-color: rgba(34, 197, 94, 0.4);
+    background: rgba(22, 101, 52, 0.35);
+    color: #bbf7d0;
+}
+
+.server-status-badge.connecting {
+    border-color: rgba(234, 179, 8, 0.4);
+    background: rgba(133, 77, 14, 0.35);
+    color: #fef08a;
+}
+
+.status-pulse-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background-color: #22c55e;
+    box-shadow: 0 0 8px #22c55e;
+    display: inline-block;
+    animation: statusPulse 2s infinite;
+}
+
+.status-pulse-dot.yellow {
+    background-color: #eab308;
+    box-shadow: 0 0 8px #eab308;
+}
+
+@keyframes statusPulse {
+    0% { transform: scale(0.95); opacity: 0.8; }
+    50% { transform: scale(1.2); opacity: 1; }
+    100% { transform: scale(0.95); opacity: 0.8; }
+}

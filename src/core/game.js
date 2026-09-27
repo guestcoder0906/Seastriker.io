@@ -70,6 +70,7 @@ class NarwhaleGame {
             fastSwimActive: false
         };
         
+        this.killFeed = [];
         this.colorUtils = new ColorUtils(); 
         this.narwhalSpeed = new NarwhalSpeed();
         this.roomState = this.room.roomState || {}; 
@@ -125,8 +126,9 @@ class NarwhaleGame {
         await this.room.initialize();
         
         this.room.subscribePresence(this.handlePresenceUpdate.bind(this));
-        
         this.room.subscribePresenceUpdateRequests(this.handlePresenceRequest.bind(this));
+        this.room.subscribeKillBroadcast(this.handleKillBroadcast.bind(this));
+        this.room.subscribeStatus(this.handleStatusUpdate.bind(this));
         
         // Initialize special skin access
         this.specialSkinAccess.initialize();
@@ -138,6 +140,30 @@ class NarwhaleGame {
         this.startScreen.show();
     }
     
+    handleStatusUpdate(status) {
+        if (this.startScreen && typeof this.startScreen.updateNetworkStatus === 'function') {
+            this.startScreen.updateNetworkStatus(status);
+        }
+        this.updateLeaderboard();
+    }
+
+    handleKillBroadcast(data) {
+        if (!data) return;
+        const isKiller = data.killerId === this.room.clientId;
+        const isVictim = data.victimId === this.room.clientId;
+        this.killFeed.unshift({
+            killerName: data.killerName || "Player",
+            victimName: data.victimName || "Creature",
+            isKiller,
+            isVictim,
+            time: performance.now()
+        });
+        if (this.killFeed.length > 5) {
+            this.killFeed.pop();
+        }
+        this.updateLeaderboard();
+    }
+
     spawnPlayer(creatureType, overrideUsername) {
         const spawnPoint = this.gameInitializer.generateSpawnPoint();
         
@@ -151,7 +177,7 @@ class NarwhaleGame {
         } catch (e) {}
 
         if (this.room && this.room.peers) {
-            this.room.peers[this.room.clientId] = { id: this.room.clientId, username };
+            this.room.peers[this.room.clientId] = { id: this.room.clientId, username, kills: 0 };
         }
         
         this.creature = this.gameInitializer.createCreature(creatureType, spawnPoint.x, spawnPoint.y, username);
@@ -179,9 +205,12 @@ class NarwhaleGame {
             this.playerPresences[this.room.clientId] = this.creature.getPresenceData();
         }
         
-        for (const aiId in this.aiController.aiPlayers) {
-            if (this.aiController.aiPresences[aiId]) {
-                this.playerPresences[aiId] = this.aiController.aiPresences[aiId];
+        // Only run local bots if completely disconnected from multiplayer server
+        if (!this.room.isServerConnected) {
+            for (const aiId in this.aiController.aiPlayers) {
+                if (this.aiController.aiPresences[aiId]) {
+                    this.playerPresences[aiId] = this.aiController.aiPresences[aiId];
+                }
             }
         }
         
@@ -192,19 +221,20 @@ class NarwhaleGame {
                 this.players[clientId] = {
                     id: clientId,
                     name: this.room.peers[clientId]?.username || 
-                          (clientId.startsWith('ai-') ? presence.name : "Unknown"),
+                          presence.name || 
+                          (clientId.startsWith('ai-') ? "Creature" : "Player"),
                     segments: presence.segments,
                     color: presence.color,
                     isDashing: presence.isDashing,
                     isAlive: presence.isAlive,
-                    kills: presence.kills
+                    kills: presence.kills || 0
                 };
             } 
             else if (this.players[clientId]) {
                 this.players[clientId].segments = presence.segments;
                 this.players[clientId].isDashing = presence.isDashing;
                 this.players[clientId].isAlive = presence.isAlive;
-                this.players[clientId].kills = presence.kills;
+                this.players[clientId].kills = presence.kills || 0;
             }
         }
 
@@ -303,16 +333,19 @@ class NarwhaleGame {
             this.handlePlayerDeath();
         }
         
-        this.aiController.update();
-        
-        // Update AI octopus abilities
-        if (this.aiOctopusUpdater) {
-            for (const aiId in this.aiController.aiPlayers) {
-                this.aiOctopusUpdater.updateAIOctopus(aiId, this.aiController.aiPlayers[aiId], deltaTime);
+        // Only run local bots if disconnected from server (server runs authoritative synchronized bots)
+        if (!this.room.isServerConnected) {
+            this.aiController.update();
+            
+            // Update AI octopus abilities
+            if (this.aiOctopusUpdater) {
+                for (const aiId in this.aiController.aiPlayers) {
+                    this.aiOctopusUpdater.updateAIOctopus(aiId, this.aiController.aiPlayers[aiId], deltaTime);
+                }
             }
+            
+            this.aiCleanup.checkForStaleAI();
         }
-        
-        this.aiCleanup.checkForStaleAI();
         
         // Update octopus tentacle effect system
         if (this.octopusTentacleEffect) {
@@ -488,12 +521,13 @@ class NarwhaleGame {
                 }
                 
                 const presence = this.playerPresences[clientId];
-                const name = this.room.peers[clientId]?.username || "Unknown";
+                const name = this.room.peers[clientId]?.username || presence?.name || "Player";
+                const kills = (this.room.peers[clientId]?.kills !== undefined ? this.room.peers[clientId].kills : presence?.kills) || 0;
                 
                 players.push({
                     id: clientId,
                     name: name,
-                    kills: presence.kills || 0,
+                    kills: kills,
                     isLocal: false,
                     isAI: false
                 });

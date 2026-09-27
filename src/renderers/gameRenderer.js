@@ -146,6 +146,80 @@ export class GameRenderer {
         
         // Restore context state
         ctx.restore();
+
+        // Draw screen-space multiplayer HUD and kill feed
+        this.drawKillFeed(ctx);
+        this.drawNetworkHUD(ctx);
+    }
+
+    drawKillFeed(ctx) {
+        if (!this.game.killFeed || this.game.killFeed.length === 0) return;
+        const now = performance.now();
+        const duration = 4000;
+
+        ctx.save();
+        ctx.textAlign = 'center';
+        ctx.font = 'bold 14px "Segoe UI", Arial, sans-serif';
+
+        let yOffset = 25;
+        const centerX = ctx.canvas.width / 2;
+
+        for (let i = 0; i < this.game.killFeed.length; i++) {
+            const item = this.game.killFeed[i];
+            const age = now - item.time;
+            if (age > duration) continue;
+
+            const alpha = age > duration - 600 ? Math.max(0, (duration - age) / 600) : 1;
+            ctx.globalAlpha = alpha;
+
+            const text = item.isKiller 
+                ? `🔥 You eliminated ${item.victimName}!` 
+                : item.isVictim 
+                    ? `💀 You were eliminated by ${item.killerName}` 
+                    : `⚔️ ${item.killerName} eliminated ${item.victimName}`;
+
+            const textWidth = ctx.measureText(text).width;
+            const padX = 16;
+            const h = 28;
+
+            ctx.fillStyle = item.isKiller 
+                ? 'rgba(217, 119, 6, 0.9)' 
+                : item.isVictim 
+                    ? 'rgba(220, 38, 38, 0.9)' 
+                    : 'rgba(15, 23, 42, 0.8)';
+            ctx.beginPath();
+            if (typeof ctx.roundRect === 'function') {
+                ctx.roundRect(centerX - textWidth / 2 - padX, yOffset, textWidth + padX * 2, h, 14);
+            } else {
+                ctx.rect(centerX - textWidth / 2 - padX, yOffset, textWidth + padX * 2, h);
+            }
+            ctx.fill();
+
+            ctx.fillStyle = '#ffffff';
+            ctx.fillText(text, centerX, yOffset + 19);
+
+            yOffset += 34;
+        }
+
+        ctx.restore();
+    }
+
+    drawNetworkHUD(ctx) {
+        if (!this.game.gameActive) return;
+        ctx.save();
+        const isOnline = this.game.room && this.game.room.isServerConnected;
+        const count = Object.keys(this.game.room?.peers || {}).length;
+
+        ctx.font = '12px "Segoe UI", Arial, sans-serif';
+        ctx.fillStyle = isOnline ? '#22c55e' : '#eab308';
+        ctx.beginPath();
+        ctx.arc(20, 20, 4, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+        ctx.textAlign = 'left';
+        ctx.fillText(isOnline ? `Multiplayer Online (${count} player${count === 1 ? '' : 's'})` : 'Connecting to Ocean...', 30, 24);
+        ctx.restore();
     }
 
     createOceanBackground() {
