@@ -225,9 +225,9 @@ export class GameRenderer {
         if (isConnecting) {
             label = 'Connecting to Multiplayer Ocean...';
         } else if (realCount === 1) {
-            label = 'Multiplayer Online (1 Real Player - Solo Ocean)';
+            label = 'Multiplayer Online (1 Player (online))';
         } else {
-            label = `Multiplayer Online (${realCount} Real Players - PvP Live)`;
+            label = `Multiplayer Online (${realCount} Players (online))`;
         }
         ctx.fillText(label, 30, 24);
         ctx.restore();

@@ -304,8 +304,8 @@ export class StartScreen {
         } else {
             this.serverBadge.className = 'server-status-badge online';
             const playerLabel = realCount === 1 
-                ? '<strong>Multiplayer Online:</strong> 1 Real Player (Solo Ocean)' 
-                : `<strong>Multiplayer Online:</strong> ${realCount} Real Players (PvP Ready!)`;
+                ? '<strong>Multiplayer Online:</strong> 1 Player (online)' 
+                : `<strong>Multiplayer Online:</strong> ${realCount} Players (online)`;
             this.serverBadge.innerHTML = `<span class="status-pulse-dot"></span> ${playerLabel} <span style="opacity: 0.7; font-size: 0.85em;">(${botCount} Ocean Wildlife)</span>`;
         }
     }
