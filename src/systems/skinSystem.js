@@ -57,15 +57,6 @@ export class SkinSystem {
                     unlocked: true,
                     selected: true
                 }
-            ],
-            dolphin: [
-                {
-                    id: 'default',
-                    name: 'Default Dolphin',
-                    description: 'The standard dolphin.',
-                    unlocked: true,
-                    selected: true
-                }
             ]
         };
         
@@ -115,8 +106,7 @@ export class SkinSystem {
         
         // Find the skin
         const skin = this.skins[creatureType].find(s => s.id === skinId);
-        if (!skin) return false;
-        skin.unlocked = true;
+        if (!skin || !skin.unlocked) return false;
         
         // Deselect all skins for this creature type
         this.skins[creatureType].forEach(s => s.selected = false);
@@ -130,8 +120,10 @@ export class SkinSystem {
     
     unlockSkin(creatureType, skinId) {
         if (!this.skins[creatureType]) return false;
+        
         const skin = this.skins[creatureType].find(s => s.id === skinId);
-        if (!skin) return false;
+        if (!skin || skin.unlocked) return false;
+        
         skin.unlocked = true;
         this.saveSkinData();
         return true;

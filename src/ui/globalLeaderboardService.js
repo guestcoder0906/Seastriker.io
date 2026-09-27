@@ -33,8 +33,7 @@ export class GlobalLeaderboardService {
         
         // 1. Try fetching from server REST API
         try {
-            const serverUrl = (this.game && this.game.room && this.game.room.serverUrl) ? this.game.room.serverUrl : '';
-            const res = await fetch(serverUrl + '/api/leaderboard');
+            const res = await fetch('/api/leaderboard');
             if (res.ok) {
                 const data = await res.json();
                 if (data && Array.isArray(data.bestKills) && Array.isArray(data.totalKills)) {
@@ -131,8 +130,7 @@ export class GlobalLeaderboardService {
         
         // 1. Submit via REST API
         try {
-            const serverUrl = (this.game && this.game.room && this.game.room.serverUrl) ? this.game.room.serverUrl : '';
-            const res = await fetch(serverUrl + '/api/leaderboard', {
+            const res = await fetch('/api/leaderboard', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)

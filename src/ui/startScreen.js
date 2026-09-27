@@ -6,7 +6,6 @@ export class StartScreen {
     constructor(game) {
         this.game = game;
         this.visible = true;
-        this.selectedMode = 'global';
         this.creatureSelectionManager = new CreatureSelectionManager(game);
         this.validationTimeout = null;
         this.isValidUsername = true;
@@ -32,14 +31,6 @@ export class StartScreen {
         const header = document.createElement('h1');
         header.textContent = 'SeaStriker.io';
         this.container.appendChild(header);
-
-        // Multiplayer server status badge
-        const serverBadge = document.createElement('div');
-        serverBadge.id = 'ocean-server-badge';
-        serverBadge.className = 'server-status-badge online';
-        serverBadge.innerHTML = `<span class="status-pulse-dot"></span> <strong>Multiplayer Online:</strong> 7 players in ocean`;
-        this.serverBadge = serverBadge;
-        this.container.appendChild(serverBadge);
 
         // Create username input section
         const usernameContainer = document.createElement('div');
@@ -90,7 +81,7 @@ export class StartScreen {
 
         const feedback = document.createElement('div');
         feedback.className = 'username-feedback valid';
-        feedback.textContent = '✓ Unique ocean nickname available';
+        feedback.textContent = '✓ Ready to swim';
         usernameContainer.appendChild(feedback);
         this.usernameFeedback = feedback;
 
@@ -102,62 +93,6 @@ export class StartScreen {
         });
 
         this.container.appendChild(usernameContainer);
-
-        // Create Game Mode Selection section (with live background preview)
-        const modeSection = document.createElement('div');
-        modeSection.className = 'game-mode-section';
-
-        const modeHeader = document.createElement('div');
-        modeHeader.className = 'game-mode-header';
-        modeHeader.innerHTML = `
-            <h2>Choose Game Mode:</h2>
-            <span class="preview-mode-tag" id="preview-mode-tag">👁️ Background is Live Preview</span>
-        `;
-        modeSection.appendChild(modeHeader);
-
-        const modeGrid = document.createElement('div');
-        modeGrid.className = 'game-mode-grid';
-
-        // 1. Global Multiplayer Card
-        const globalCard = document.createElement('div');
-        globalCard.className = 'game-mode-card active';
-        globalCard.id = 'mode-card-global';
-        globalCard.innerHTML = `
-            <div class="mode-card-top">
-                <span class="mode-icon">🌐</span>
-                <span class="mode-name">Global Multiplayer</span>
-                <span class="mode-tag pvp">Real Players Only</span>
-            </div>
-            <div class="mode-desc">Live worldwide PvP against real human players. No bots in this ocean!</div>
-            <div class="mode-preview-indicator">👁️ Live background shows global ocean</div>
-        `;
-        globalCard.addEventListener('click', () => {
-            this.selectMode('global');
-        });
-
-        // 2. Play with AI Card
-        const aiCard = document.createElement('div');
-        aiCard.className = 'game-mode-card';
-        aiCard.id = 'mode-card-ai';
-        aiCard.innerHTML = `
-            <div class="mode-card-top">
-                <span class="mode-icon">🤖</span>
-                <span class="mode-name">Play with AI</span>
-                <span class="mode-tag ai">Wildlife Arena</span>
-            </div>
-            <div class="mode-desc">Fast action arena with intelligent ocean wildlife (Sharks, Dolphins, Squids, Narwhals).</div>
-            <div class="mode-preview-indicator">👁️ Live background shows AI bots arena</div>
-        `;
-        aiCard.addEventListener('click', () => {
-            this.selectMode('ai');
-        });
-
-        modeGrid.appendChild(globalCard);
-        modeGrid.appendChild(aiCard);
-        modeSection.appendChild(modeGrid);
-        this.container.appendChild(modeSection);
-        this.globalCard = globalCard;
-        this.aiCard = aiCard;
 
         // Create creature selection section
         const selectionContainer = document.createElement('div');
@@ -225,30 +160,12 @@ export class StartScreen {
         selectionContainer.appendChild(optionsContainer);
         this.container.appendChild(selectionContainer);
 
-        // Create play buttons container
-        const playButtonsContainer = document.createElement('div');
-        playButtonsContainer.className = 'play-buttons-container';
-
-        // Play Global Multiplayer Button
-        const playGlobalButton = document.createElement('button');
-        playGlobalButton.id = 'play-global-button';
-        playGlobalButton.className = 'mode-play-btn global-btn active';
-        playGlobalButton.innerHTML = `<span>🌐</span> PLAY GLOBAL MULTIPLAYER`;
-        playGlobalButton.addEventListener('click', () => this.startGame('global'));
-
-        // Play With AI Button
-        const playAiButton = document.createElement('button');
-        playAiButton.id = 'play-ai-button';
-        playAiButton.className = 'mode-play-btn ai-btn';
-        playAiButton.innerHTML = `<span>🤖</span> PLAY WITH AI`;
-        playAiButton.addEventListener('click', () => this.startGame('ai'));
-
-        playButtonsContainer.appendChild(playGlobalButton);
-        playButtonsContainer.appendChild(playAiButton);
-        this.container.appendChild(playButtonsContainer);
-
-        this.playGlobalButton = playGlobalButton;
-        this.playAiButton = playAiButton;
+        // Create play button
+        const playButton = document.createElement('button');
+        playButton.id = 'play-button';
+        playButton.textContent = 'PLAY';
+        playButton.addEventListener('click', () => this.startGame());
+        this.container.appendChild(playButton);
 
         // Create button container for other buttons
         const buttonContainer = document.createElement('div');
@@ -311,8 +228,7 @@ export class StartScreen {
 
         try {
             const socketId = this.game.room && this.game.room.clientId ? this.game.room.clientId : null;
-            const serverUrl = this.game.room?.serverUrl || '';
-            const res = await fetch(serverUrl + '/api/check-username', {
+            const res = await fetch('/api/check-username', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ username: clean, socketId })
@@ -332,7 +248,7 @@ export class StartScreen {
                 }
             }
         } catch (e) {
-            // Offline / cross-origin fallback
+            // Offline fallback
         }
 
         this.isValidUsername = true;
@@ -366,70 +282,11 @@ export class StartScreen {
             }
         });
     }
-
-    selectMode(mode) {
-        this.selectedMode = mode === 'ai' ? 'ai' : 'global';
-        if (this.globalCard && this.aiCard) {
-            if (this.selectedMode === 'global') {
-                this.globalCard.classList.add('active');
-                this.aiCard.classList.remove('active');
-                if (this.playGlobalButton) this.playGlobalButton.classList.add('active');
-                if (this.playAiButton) this.playAiButton.classList.remove('active');
-            } else {
-                this.aiCard.classList.add('active');
-                this.globalCard.classList.remove('active');
-                if (this.playAiButton) this.playAiButton.classList.add('active');
-                if (this.playGlobalButton) this.playGlobalButton.classList.remove('active');
-            }
-        }
-
-        // Live preview immediately switches to this game mode's background
-        if (this.game && typeof this.game.setPreviewMode === 'function') {
-            this.game.setPreviewMode(this.selectedMode);
-        }
-
-        this.updateNetworkStatus();
-    }
-
-    updateNetworkStatus(status) {
-        if (!this.serverBadge) return;
-        const realCount = this.game.room?.getRealPlayerCount ? this.game.room.getRealPlayerCount() : (status?.playersCount || 1);
-        const botCount = this.game.room?.getAIBotCount ? this.game.room.getAIBotCount() : (status?.aiCount || 6);
-        const connecting = status?.connecting ?? (this.game.room && this.game.room.isConnecting);
-
-        if (connecting) {
-            this.serverBadge.className = 'server-status-badge connecting';
-            this.serverBadge.innerHTML = `<span class="status-pulse-dot yellow"></span> Connecting to Ocean Servers...`;
-            return;
-        }
-
-        this.serverBadge.className = 'server-status-badge online';
-        if (this.selectedMode === 'ai') {
-            this.serverBadge.innerHTML = `<span class="status-pulse-dot purple"></span> <strong>Mode: Play with AI</strong> • ${botCount} Wildlife Bots Active (Live Preview)`;
-        } else {
-            const playerLabel = realCount === 1 
-                ? '<strong>Mode: Global Multiplayer</strong> • 1 Real Player Online (No Bots)' 
-                : `<strong>Mode: Global Multiplayer</strong> • ${realCount} Real Players Online (No Bots)`;
-            this.serverBadge.innerHTML = `<span class="status-pulse-dot"></span> ${playerLabel} (Live Preview)`;
-        }
-    }
     
     show() {
         this.visible = true;
         this.container.style.display = 'flex';
         this.updateCreatureNames();
-        if (this.game.room) {
-            const realCount = this.game.room.getRealPlayerCount ? this.game.room.getRealPlayerCount() : 1;
-            const botCount = this.game.room.getAIBotCount ? this.game.room.getAIBotCount() : 6;
-            this.updateNetworkStatus({
-                connected: true,
-                playersCount: realCount,
-                aiCount: botCount
-            });
-        }
-        if (this.game && typeof this.game.setPreviewMode === 'function') {
-            this.game.setPreviewMode(this.selectedMode);
-        }
     }
     
     hide() {
@@ -437,10 +294,7 @@ export class StartScreen {
         this.container.style.display = 'none';
     }
     
-    async startGame(mode) {
-        const gameMode = mode || this.selectedMode || 'global';
-        this.selectedMode = gameMode;
-
+    async startGame() {
         let cleanName = (this.usernameInput ? this.usernameInput.value : '').trim().substring(0, 16);
         if (!cleanName || cleanName.length < 2) {
             cleanName = this.getRandomOceanName();
@@ -457,21 +311,17 @@ export class StartScreen {
             if (this.game.room.peers && this.game.room.clientId) {
                 this.game.room.peers[this.game.room.clientId] = {
                     id: this.game.room.clientId,
-                    username: cleanName,
-                    gameMode: gameMode
+                    username: cleanName
                 };
             }
             if (this.game.room.socket && this.game.room.isServerConnected) {
                 this.game.room.socket.emit('setUsername', { username: cleanName });
-                if (typeof this.game.room.setGameMode === 'function') {
-                    this.game.room.setGameMode(gameMode);
-                }
             }
         }
 
         this.hide();
-        // Spawn player with chosen username and selected game mode
-        this.game.spawnPlayer(this.creatureSelectionManager.getSelectedCreature(), cleanName, gameMode);
+        // Spawn player with chosen username
+        this.game.spawnPlayer(this.creatureSelectionManager.getSelectedCreature(), cleanName);
     }
     
     showDeathScreen(kills) {
@@ -479,30 +329,23 @@ export class StartScreen {
         const header = this.container.querySelector('h1');
         header.textContent = 'Game Over';
         
-        const modeLabel = this.game.gameMode === 'ai' ? '🤖 Play with AI Mode' : '🌐 Global Multiplayer Mode';
         // Show final score
         const scoreDisplay = document.createElement('div');
         scoreDisplay.className = 'death-score';
-        scoreDisplay.innerHTML = `
-            <h2>Final Score: ${kills} Kills</h2>
-            <div style="font-size: 13px; opacity: 0.85; margin-top: 4px;">Eliminated in ${modeLabel}</div>
-        `;
+        scoreDisplay.innerHTML = `<h2>Final Score: ${kills} Kills</h2>`;
         
         // Replace any existing death score
         const existingScore = this.container.querySelector('.death-score');
         if (existingScore) {
             existingScore.replaceWith(scoreDisplay);
         } else {
+            // Insert after the header
             header.after(scoreDisplay);
         }
         
-        // Update button texts for playing again
-        if (this.playGlobalButton) {
-            this.playGlobalButton.innerHTML = `<span>🌐</span> PLAY GLOBAL AGAIN`;
-        }
-        if (this.playAiButton) {
-            this.playAiButton.innerHTML = `<span>🤖</span> PLAY AI AGAIN`;
-        }
+        // Change play button text
+        const playButton = this.container.querySelector('#play-button');
+        playButton.textContent = 'PLAY AGAIN';
         
         // Make sure the stats button is visible
         const statsButton = this.container.querySelector('#stats-button');

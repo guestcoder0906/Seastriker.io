@@ -241,14 +241,15 @@ export class KnifeFish extends Creature {
         const bladeY = this.segments[0].y + Math.sin(facingAngle) * bladeDist;
         
         for (const clientId in playerPresences) {
-            const otherCreature = playerPresences[clientId];
             // Skip self
-            if (clientId === this.id || (typeof window !== 'undefined' && window.game?.isSelf && window.game.isSelf(clientId, otherCreature))) continue;
+            if (clientId === this.id) continue;
             
             // Respect collision cooldown
             if (this.recentCollisions && this.recentCollisions[clientId] && (now - this.recentCollisions[clientId] < (CONFIG.COLLISION_COOLDOWN || 1000))) {
                 continue;
             }
+            
+            const otherCreature = playerPresences[clientId];
             
             // Skip if other creature is not alive or doesn't have segments
             if (!otherCreature || !otherCreature.isAlive || !otherCreature.segments || otherCreature.segments.length === 0) continue;
@@ -370,9 +371,10 @@ export class KnifeFish extends Creature {
         if (!this.isAlive) return false;
         
         for (const clientId in playerPresences) {
-            const otherCreature = playerPresences[clientId];
             // Skip self
-            if (clientId === this.id || (typeof window !== 'undefined' && window.game?.isSelf && window.game.isSelf(clientId, otherCreature))) continue;
+            if (clientId === this.id) continue;
+            
+            const otherCreature = playerPresences[clientId];
             
             // Skip if other creature is not alive or doesn't have segments
             if (!otherCreature || !otherCreature.isAlive || !otherCreature.segments) continue;
