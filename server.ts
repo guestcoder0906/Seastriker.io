@@ -165,7 +165,7 @@ async function startServer() {
     isAlive: boolean;
     respawnTime: number;
     turnTimer: number;
-    segments: Array<{ x: number; y: number; angle: number; scale: number; round: boolean }>;
+    segments: Array<{ x: number; y: number; angle: number; scale: number; round: boolean; isSquidHead?: boolean }>;
   }
 
   function createBotSegments(type: string, startX: number, startY: number, angle: number) {
@@ -191,7 +191,8 @@ async function startServer() {
         y: startY - i * 14 * Math.sin(angle),
         angle,
         scale,
-        round: i === 0
+        round: i === 0,
+        isSquidHead: type === "squid" && i === 0
       });
     }
     return segments;

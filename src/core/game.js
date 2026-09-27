@@ -335,10 +335,14 @@ class NarwhaleGame {
                     skinId: presence.skinId || 'default',
                     isDashing: presence.isDashing,
                     isAlive: presence.isAlive,
-                    kills: presence.kills || 0
+                    kills: presence.kills || 0,
+                    tentacles: presence.tentacles ? presence.tentacles.map(t => t.map(s => ({ ...s }))) : null
                 };
                 if (this.playerPresences[clientId]) {
                     this.playerPresences[clientId].segments = this.players[clientId].segments;
+                    if (presence.tentacles) {
+                        this.playerPresences[clientId].tentacles = this.players[clientId].tentacles;
+                    }
                 }
             } 
             else if (this.players[clientId]) {
@@ -348,11 +352,17 @@ class NarwhaleGame {
                 this.players[clientId].isDashing = presence.isDashing;
                 this.players[clientId].isAlive = presence.isAlive;
                 this.players[clientId].kills = presence.kills || 0;
+                if (presence.tentacles) {
+                    this.players[clientId].tentacles = presence.tentacles;
+                }
                 if (!this.players[clientId].segments || this.players[clientId].segments.length === 0) {
                     this.players[clientId].segments = presence.segments ? presence.segments.map(s => ({ ...s })) : [];
                 }
                 if (this.playerPresences[clientId]) {
                     this.playerPresences[clientId].segments = this.players[clientId].segments;
+                    if (this.players[clientId].tentacles) {
+                        this.playerPresences[clientId].tentacles = this.players[clientId].tentacles;
+                    }
                 }
             }
         }
@@ -389,8 +399,8 @@ class NarwhaleGame {
                 const currentHead = p.segments[0];
                 const distToTarget = Math.hypot(targetHead.x - currentHead.x, targetHead.y - currentHead.y);
 
-                if (distToTarget > 400) {
-                    // Teleport / Respawn snap
+                if (distToTarget > 400 || isNaN(distToTarget) || isNaN(currentHead.x) || isNaN(currentHead.y)) {
+                    // Teleport / Respawn snap / NaN recovery
                     p.segments = p.targetSegments.map(s => ({ ...s }));
                 } else {
                     // Adaptive responsive lerp: high agility when dashing or further away, buttery smooth when cruising
@@ -405,7 +415,7 @@ class NarwhaleGame {
 
                     // Match segment array lengths safely
                     while (p.segments.length < p.targetSegments.length) {
-                        const last = p.segments[p.segments.length - 1];
+                        const last = p.segments[p.segments.length - 1] || targetHead;
                         p.segments.push({ ...last });
                     }
                     if (p.segments.length > p.targetSegments.length) {
@@ -436,6 +446,9 @@ class NarwhaleGame {
                     this.playerPresences[clientId].y = p.segments[0].y;
                     this.playerPresences[clientId].angle = p.segments[0].angle;
                     this.playerPresences[clientId].isDashing = p.isDashing;
+                    if (p.tentacles) {
+                        this.playerPresences[clientId].tentacles = p.tentacles;
+                    }
                 }
             }
         }
