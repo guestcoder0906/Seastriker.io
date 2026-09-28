@@ -134,6 +134,12 @@ export class SupabaseRealtimeManager {
     }
 
     async fetchGlobalLeaderboardFromSupabase() {
+        const FAKE_PLAYERS = new Set([
+            "megalodon_99", "krakenhunter", "viperfish_pro", "abyssalsniper",
+            "coralreef_x", "tsunamifin", "deepseastriker", "hydroblade",
+            "apexpredator", "krakenking", "abyssalghost", "viperfish",
+            "tsunamirider", "shadowfin", "coralsniper", "deepblue", "testplayer"
+        ]);
         const client = this.getClient();
         
         // 1. Fetch from Supabase cloud storage (persistent global scores)
@@ -148,8 +154,8 @@ export class SupabaseRealtimeManager {
                     const parsed = JSON.parse(text);
                     if (parsed && (Array.isArray(parsed.bestKills) || Array.isArray(parsed.totalKills))) {
                         return {
-                            bestKills: Array.isArray(parsed.bestKills) ? parsed.bestKills : [],
-                            totalKills: Array.isArray(parsed.totalKills) ? parsed.totalKills : []
+                            bestKills: (Array.isArray(parsed.bestKills) ? parsed.bestKills : []).filter(e => e && e.username && !FAKE_PLAYERS.has(String(e.username).toLowerCase().trim())),
+                            totalKills: (Array.isArray(parsed.totalKills) ? parsed.totalKills : []).filter(e => e && e.username && !FAKE_PLAYERS.has(String(e.username).toLowerCase().trim()))
                         };
                     }
                 }
@@ -166,8 +172,8 @@ export class SupabaseRealtimeManager {
                 const parsed = await res.json();
                 if (parsed && (Array.isArray(parsed.bestKills) || Array.isArray(parsed.totalKills))) {
                     return {
-                        bestKills: Array.isArray(parsed.bestKills) ? parsed.bestKills : [],
-                        totalKills: Array.isArray(parsed.totalKills) ? parsed.totalKills : []
+                        bestKills: (Array.isArray(parsed.bestKills) ? parsed.bestKills : []).filter(e => e && e.username && !FAKE_PLAYERS.has(String(e.username).toLowerCase().trim())),
+                        totalKills: (Array.isArray(parsed.totalKills) ? parsed.totalKills : []).filter(e => e && e.username && !FAKE_PLAYERS.has(String(e.username).toLowerCase().trim()))
                     };
                 }
             }
@@ -191,7 +197,7 @@ export class SupabaseRealtimeManager {
 
                         for (const row of data) {
                             const username = row.username || row.name || row.player_name || row.user_name;
-                            if (!username) continue;
+                            if (!username || FAKE_PLAYERS.has(String(username).toLowerCase().trim())) continue;
 
                             const best = Number(row.best_kills ?? row.bestkills ?? row.best_score ?? row.score ?? row.kills ?? 0) || 0;
                             const total = Number(row.total_kills ?? row.totalkills ?? row.total_score ?? row.total ?? 0) || 0;

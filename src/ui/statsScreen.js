@@ -120,8 +120,15 @@ export class StatsScreen {
         this.bestKillsTab.className = 'leaderboard-tab' + (type === 'bestKills' ? ' active' : '');
         this.totalKillsTab.className = 'leaderboard-tab' + (type === 'totalKills' ? ' active' : '');
         
-        // Get global leaderboard data from the manager
-        const leaderboard = this.game.globalLeaderboardManager.leaderboardData[type] || [];
+        // Get global leaderboard data from the manager and filter out any placeholder/fake players
+        const FAKE_PLAYERS = new Set([
+            "megalodon_99", "krakenhunter", "viperfish_pro", "abyssalsniper",
+            "coralreef_x", "tsunamifin", "deepseastriker", "hydroblade",
+            "apexpredator", "krakenking", "abyssalghost", "viperfish",
+            "tsunamirider", "shadowfin", "coralsniper", "deepblue", "testplayer"
+        ]);
+        const rawLeaderboard = (this.game.globalLeaderboardManager && this.game.globalLeaderboardManager.leaderboardData && this.game.globalLeaderboardManager.leaderboardData[type]) || [];
+        const leaderboard = rawLeaderboard.filter(e => e && e.username && !FAKE_PLAYERS.has(String(e.username).toLowerCase().trim()));
         
         // Clear content
         this.leaderboardContent.innerHTML = '';

@@ -1,3 +1,23 @@
+export const FAKE_PLACEHOLDER_PLAYERS = new Set([
+    "megalodon_99",
+    "krakenhunter",
+    "viperfish_pro",
+    "abyssalsniper",
+    "coralreef_x",
+    "tsunamifin",
+    "deepseastriker",
+    "hydroblade",
+    "apexpredator",
+    "krakenking",
+    "abyssalghost",
+    "viperfish",
+    "tsunamirider",
+    "shadowfin",
+    "coralsniper",
+    "deepblue",
+    "testplayer"
+]);
+
 export class GlobalLeaderboardService {
     constructor(game) {
         this.game = game;
@@ -11,9 +31,13 @@ export class GlobalLeaderboardService {
         if (this.game && this.game.room && this.game.room.socket) {
             this.game.room.socket.on('leaderboardUpdate', (data) => {
                 if (data) {
-                    this.leaderboardCache = data;
+                    const cleanData = {
+                        bestKills: (data.bestKills || []).filter(e => e && e.username && !FAKE_PLACEHOLDER_PLAYERS.has(String(e.username).toLowerCase().trim())),
+                        totalKills: (data.totalKills || []).filter(e => e && e.username && !FAKE_PLACEHOLDER_PLAYERS.has(String(e.username).toLowerCase().trim()))
+                    };
+                    this.leaderboardCache = cleanData;
                     if (this.game.globalLeaderboardManager) {
-                        this.game.globalLeaderboardManager.leaderboardData = data;
+                        this.game.globalLeaderboardManager.leaderboardData = cleanData;
                     }
                     if (this.game.statsScreen && this.game.statsScreen.container && this.game.statsScreen.container.style.display !== 'none') {
                         this.game.statsScreen.updateLeaderboard();
@@ -27,12 +51,16 @@ export class GlobalLeaderboardService {
         if (this.game && this.game.room && this.game.room.supabase) {
             this.game.room.supabase.subscribeLeaderboard((data) => {
                 if (data && Array.isArray(data.bestKills) && Array.isArray(data.totalKills)) {
-                    this.leaderboardCache = data;
+                    const cleanData = {
+                        bestKills: data.bestKills.filter(e => e && e.username && !FAKE_PLACEHOLDER_PLAYERS.has(String(e.username).toLowerCase().trim())),
+                        totalKills: data.totalKills.filter(e => e && e.username && !FAKE_PLACEHOLDER_PLAYERS.has(String(e.username).toLowerCase().trim()))
+                    };
+                    this.leaderboardCache = cleanData;
                     try {
-                        localStorage.setItem('cached_global_leaderboard', JSON.stringify(data));
+                        localStorage.setItem('cached_global_leaderboard', JSON.stringify(cleanData));
                     } catch (e) {}
                     if (this.game.globalLeaderboardManager) {
-                        this.game.globalLeaderboardManager.leaderboardData = data;
+                        this.game.globalLeaderboardManager.leaderboardData = cleanData;
                     }
                     if (this.game.statsScreen && this.game.statsScreen.container && this.game.statsScreen.container.style.display !== 'none') {
                         this.game.statsScreen.updateLeaderboard();
@@ -41,7 +69,7 @@ export class GlobalLeaderboardService {
             });
 
             this.game.room.supabase.subscribeScoreSubmit((payload) => {
-                if (payload && payload.username) {
+                if (payload && payload.username && !FAKE_PLACEHOLDER_PLAYERS.has(String(payload.username).toLowerCase().trim())) {
                     this.mergeScore(payload);
                 }
             });
@@ -69,6 +97,7 @@ export class GlobalLeaderboardService {
                 for (const item of data.bestKills) {
                     if (!item || !item.username) continue;
                     const name = String(item.username).trim();
+                    if (FAKE_PLACEHOLDER_PLAYERS.has(name.toLowerCase())) continue;
                     const score = Number(item.score ?? item.best_kills ?? item.kills ?? 0) || 0;
                     if (score <= 0) continue;
                     const existing = combined.bestKills.find(e => e.username.toLowerCase() === name.toLowerCase());
@@ -83,6 +112,7 @@ export class GlobalLeaderboardService {
                 for (const item of data.totalKills) {
                     if (!item || !item.username) continue;
                     const name = String(item.username).trim();
+                    if (FAKE_PLACEHOLDER_PLAYERS.has(name.toLowerCase())) continue;
                     const score = Number(item.score ?? item.total_kills ?? item.kills ?? 0) || 0;
                     if (score <= 0) continue;
                     const existing = combined.totalKills.find(e => e.username.toLowerCase() === name.toLowerCase());
@@ -188,18 +218,6 @@ export class GlobalLeaderboardService {
     }
     
     _formatLeaderboardData(leaderboardData) {
-        const fakeNames = new Set([
-            "apexpredator",
-            "krakenking",
-            "abyssalghost",
-            "viperfish",
-            "tsunamirider",
-            "shadowfin",
-            "coralsniper",
-            "deepblue",
-            "testplayer"
-        ]);
-
         const formattedData = {
             bestKills: [],
             totalKills: []
@@ -207,7 +225,7 @@ export class GlobalLeaderboardService {
         
         if (leaderboardData.bestKills) {
             for (const username in leaderboardData.bestKills) {
-                if (fakeNames.has(username.toLowerCase().trim())) continue;
+                if (FAKE_PLACEHOLDER_PLAYERS.has(username.toLowerCase().trim())) continue;
                 formattedData.bestKills.push({
                     username: username,
                     score: Number(leaderboardData.bestKills[username]) || 0
@@ -218,7 +236,7 @@ export class GlobalLeaderboardService {
         
         if (leaderboardData.totalKills) {
             for (const username in leaderboardData.totalKills) {
-                if (fakeNames.has(username.toLowerCase().trim())) continue;
+                if (FAKE_PLACEHOLDER_PLAYERS.has(username.toLowerCase().trim())) continue;
                 formattedData.totalKills.push({
                     username: username,
                     score: Number(leaderboardData.totalKills[username]) || 0
@@ -233,11 +251,17 @@ export class GlobalLeaderboardService {
     mergeScore(payload) {
         if (!payload || !payload.username) return;
         const cleanName = payload.username.trim();
+        if (FAKE_PLACEHOLDER_PLAYERS.has(cleanName.toLowerCase())) return;
+
         const bk = Math.max(0, parseInt(payload.bestKills, 10) || 0);
         const tk = Math.max(0, parseInt(payload.totalKills, 10) || 0);
 
         if (!this.leaderboardCache) {
             this.leaderboardCache = { bestKills: [], totalKills: [] };
+        } else {
+            // Strip any stale fake players from cache
+            this.leaderboardCache.bestKills = (this.leaderboardCache.bestKills || []).filter(e => e && e.username && !FAKE_PLACEHOLDER_PLAYERS.has(String(e.username).toLowerCase().trim()));
+            this.leaderboardCache.totalKills = (this.leaderboardCache.totalKills || []).filter(e => e && e.username && !FAKE_PLACEHOLDER_PLAYERS.has(String(e.username).toLowerCase().trim()));
         }
 
         // Merge into bestKills

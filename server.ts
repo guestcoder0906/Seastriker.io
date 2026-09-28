@@ -30,6 +30,14 @@ try {
 }
 
 const FAKE_PLACEHOLDER_PLAYERS = new Set([
+  "megalodon_99",
+  "krakenhunter",
+  "viperfish_pro",
+  "abyssalsniper",
+  "coralreef_x",
+  "tsunamifin",
+  "deepseastriker",
+  "hydroblade",
   "apexpredator",
   "krakenking",
   "abyssalghost",
@@ -97,14 +105,14 @@ async function syncWithSupabaseDB(leaderboard: LeaderboardData): Promise<Leaderb
         if (parsed) {
           if (Array.isArray(parsed.bestKills)) {
             for (const item of parsed.bestKills) {
-              if (item && item.username && item.score) {
+              if (item && item.username && item.score && !FAKE_PLACEHOLDER_PLAYERS.has(String(item.username).toLowerCase().trim())) {
                 leaderboard.bestKills[item.username] = Math.max(leaderboard.bestKills[item.username] || 0, Number(item.score) || 0);
               }
             }
           }
           if (Array.isArray(parsed.totalKills)) {
             for (const item of parsed.totalKills) {
-              if (item && item.username && item.score) {
+              if (item && item.username && item.score && !FAKE_PLACEHOLDER_PLAYERS.has(String(item.username).toLowerCase().trim())) {
                 leaderboard.totalKills[item.username] = Math.max(leaderboard.totalKills[item.username] || 0, Number(item.score) || 0);
               }
             }
