@@ -165,9 +165,7 @@ export class Dolphin extends Creature {
             
             let dodgeAngle = this.rotationAngle + Math.PI / 4; // default front-right
             if (closestAngle !== null) {
-                let rel = closestAngle - this.rotationAngle;
-                while (rel < -Math.PI) rel += 2 * Math.PI;
-                while (rel > Math.PI) rel -= 2 * Math.PI;
+                const rel = Math.atan2(Math.sin(closestAngle - this.rotationAngle), Math.cos(closestAngle - this.rotationAngle));
                 // If enemy is on our right side, burst front-left; if on left, burst front-right
                 dodgeAngle = rel >= 0 ? (this.rotationAngle - Math.PI / 4) : (this.rotationAngle + Math.PI / 4);
             }
@@ -201,9 +199,7 @@ export class Dolphin extends Creature {
         }
         
         // Tail Snap mechanic: sharp deliberate turn during fast swim triggers a wide tail swing
-        let turnDelta = this.rotationAngle - (this.prevRotationAngle || this.rotationAngle);
-        while (turnDelta < -Math.PI) turnDelta += 2 * Math.PI;
-        while (turnDelta > Math.PI) turnDelta -= 2 * Math.PI;
+        const turnDelta = Math.atan2(Math.sin(this.rotationAngle - (this.prevRotationAngle || this.rotationAngle)), Math.cos(this.rotationAngle - (this.prevRotationAngle || this.rotationAngle)));
         
         const turnThreshold = CONFIG.DOLPHIN_TURN_SNAP_THRESHOLD || 0.11;
         if (this.isFastSwimming && Math.abs(turnDelta) > turnThreshold && !this.tailSnapState && this.tailSnapCooldown <= 0) {
@@ -363,9 +359,7 @@ export class Dolphin extends Creature {
                 
                 if (headDist < contactDistance || snoutDistToSeg < contactDistance) {
                     const angleToTarget = Math.atan2(otherSeg.y - this.segments[0].y, otherSeg.x - this.segments[0].x);
-                    let diff = Math.abs(this.rotationAngle - angleToTarget);
-                    while (diff > Math.PI) diff -= 2 * Math.PI;
-                    diff = Math.abs(diff);
+                    const diff = Math.abs(Math.atan2(Math.sin(this.rotationAngle - angleToTarget), Math.cos(this.rotationAngle - angleToTarget)));
                     
                     if (diff < 1.9 || snoutDistToSeg < (CONFIG.SEGMENT_SIZE * 1.0) || this.isDashing) {
                         hitDetected = true;

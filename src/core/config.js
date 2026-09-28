@@ -84,8 +84,8 @@ export const CONFIG = {
     DOLPHIN_AI_CHANCE: 0.25,             // 25% chance for AI to be dolphin
 
     // Fixed timing settings
-    FRAME_RATE: 30, // Target frame rate
-    TIME_STEP: 1000 / 30, // Fixed time step in ms (16.67ms for 60 FPS)
+    FRAME_RATE: 60, // Target frame rate
+    TIME_STEP: 1000 / 60, // Fixed time step in ms (16.67ms for 60 FPS)
     USE_FIXED_TIMESTEP: true, // Force fixed time step for consistent physics
 
     // Stamina settings (simplified)

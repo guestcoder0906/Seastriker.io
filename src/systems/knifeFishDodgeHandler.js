@@ -16,12 +16,12 @@ export class KnifeFishDodgeHandler {
             if (clientId === knifeFish.id) continue;
             
             const presence = this.game.playerPresences[clientId];
-            if (!presence || !presence.isAlive || !presence.segments || !presence.segments.length === 0) continue;
+            if (!presence || !presence.isAlive || !presence.segments || presence.segments.length === 0 || !presence.segments[0]) continue;
             
             // Calculate distance to this creature
             const dx = presence.segments[0].x - knifeFish.segments[0].x;
             const dy = presence.segments[0].y - knifeFish.segments[0].y;
-            const distance = Math.sqrt(dx * dx + dy * dy);
+            const distance = Math.hypot(dx, dy);
             
             // Only consider creatures within a reasonable range (400 units)
             if (distance < 400 && distance < closestDistance) {
@@ -33,8 +33,8 @@ export class KnifeFishDodgeHandler {
         // If no creatures nearby, dodge backward (default behavior)
         if (!closestCreature) {
             return {
-                x: -Math.cos(knifeFish.rotationAngle),
-                y: -Math.sin(knifeFish.rotationAngle)
+                x: -Math.cos(knifeFish.rotationAngle || 0),
+                y: -Math.sin(knifeFish.rotationAngle || 0)
             };
         }
         
@@ -42,8 +42,14 @@ export class KnifeFishDodgeHandler {
         const dirX = knifeFish.segments[0].x - closestCreature.segments[0].x;
         const dirY = knifeFish.segments[0].y - closestCreature.segments[0].y;
         
-        // Normalize the direction vector
-        const magnitude = Math.sqrt(dirX * dirX + dirY * dirY);
+        // Normalize the direction vector safely
+        const magnitude = Math.hypot(dirX, dirY);
+        if (magnitude < 0.001) {
+            return {
+                x: -Math.cos(knifeFish.rotationAngle || 0),
+                y: -Math.sin(knifeFish.rotationAngle || 0)
+            };
+        }
         
         return {
             x: dirX / magnitude,

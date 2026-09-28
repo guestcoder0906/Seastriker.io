@@ -232,9 +232,8 @@ class NarwhaleGame {
         const lerpFactor = Math.min(1.0, 1.0 - Math.exp(-22 * Math.min(deltaTime, 0.1)));
 
         const normalizeAngle = (a) => {
-            while (a > Math.PI) a -= Math.PI * 2;
-            while (a < -Math.PI) a += Math.PI * 2;
-            return a;
+            if (!Number.isFinite(a)) return 0;
+            return Math.atan2(Math.sin(a), Math.cos(a));
         };
 
         const lerpAngle = (cur, tgt, f) => {
@@ -673,7 +672,9 @@ class NarwhaleGame {
     }
 
     generateBubbles(count) {
-        for (let i = 0; i < count; i++) {
+        if (this.bubbles.length >= 60) return;
+        const toAdd = Math.min(count, 60 - this.bubbles.length);
+        for (let i = 0; i < toAdd; i++) {
             this.bubbles.push({
                 x: Math.random() * CONFIG.WORLD_WIDTH,
                 y: Math.random() * CONFIG.WORLD_HEIGHT,

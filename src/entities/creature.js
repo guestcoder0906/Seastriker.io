@@ -50,12 +50,12 @@ export class Creature {
         this.isHiddenInReef = false;
     }
 
-    // Helper to smoothly interpolate between angles while handling wrap-around.
+    // Helper to smoothly interpolate between angles safely without while loops
     lerpAngle(from, to, t) {
-        let diff = to - from;
-        while (diff < -Math.PI) diff += 2 * Math.PI;
-        while (diff > Math.PI) diff -= 2 * Math.PI;
-        return from + diff * t;
+        if (!Number.isFinite(from)) from = 0;
+        if (!Number.isFinite(to)) to = 0;
+        const diff = Math.atan2(Math.sin(to - from), Math.cos(to - from));
+        return from + diff * Math.min(1.0, Math.max(0, t));
     }
 
     // Helper for linear interpolation between two values

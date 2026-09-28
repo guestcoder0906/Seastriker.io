@@ -276,13 +276,8 @@ export class KnifeFish extends Creature {
                         otherSegment.x - this.segments[0].x
                     );
                     
-                    let diffFacing = Math.abs(facingAngle - angleToTarget);
-                    while (diffFacing > Math.PI) diffFacing -= 2 * Math.PI;
-                    diffFacing = Math.abs(diffFacing);
-                    
-                    let diffRot = Math.abs(this.rotationAngle - angleToTarget);
-                    while (diffRot > Math.PI) diffRot -= 2 * Math.PI;
-                    diffRot = Math.abs(diffRot);
+                    const diffFacing = Math.abs(Math.atan2(Math.sin(facingAngle - angleToTarget), Math.cos(facingAngle - angleToTarget)));
+                    const diffRot = Math.abs(Math.atan2(Math.sin(this.rotationAngle - angleToTarget), Math.cos(this.rotationAngle - angleToTarget)));
                     
                     const minAngleDiff = Math.min(diffFacing, diffRot);
                     
