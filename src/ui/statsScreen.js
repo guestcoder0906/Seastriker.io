@@ -161,7 +161,7 @@ export class StatsScreen {
             
             row.innerHTML = `
                 <td>${index + 1}</td>
-                <td>${entry.username || 'Unknown'}${isCurrentUser ? ' <strong style="color: #38bdf8;">(You)</strong>' : ''}</td>
+                <td>${entry.username || 'Unknown'}${isCurrentUser ? ' <strong style="color: #ffffff; font-weight: bold;">(You)</strong>' : ''}</td>
                 <td>${entry.score}</td>
             `;
             

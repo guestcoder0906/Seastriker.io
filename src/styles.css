@@ -626,6 +626,7 @@ body.leaderboard-resize-active * {
 
 .centered-header {
     text-align: center;
+    color: #ffffff;
 }
 
 .personal-stats {
@@ -662,15 +663,20 @@ body.leaderboard-resize-active * {
     border-radius: 5px;
     cursor: pointer;
     transition: all 0.3s;
+    color: #ffffff;
+    font-weight: 500;
 }
 
 .leaderboard-tab:hover {
     background-color: rgba(255, 255, 255, 0.2);
+    color: #ffffff;
 }
 
 .leaderboard-tab.active {
     background-color: rgba(100, 200, 255, 0.3);
     box-shadow: 0 0 5px rgba(100, 200, 255, 0.5);
+    color: #ffffff;
+    font-weight: bold;
 }
 
 .leaderboard-content {
@@ -679,6 +685,7 @@ body.leaderboard-resize-active * {
     scrollbar-width: thin;
     scrollbar-color: rgba(56, 189, 248, 0.4) rgba(10, 25, 47, 0.3);
     padding-right: 4px;
+    color: #ffffff;
 }
 
 .leaderboard-content::-webkit-scrollbar {
@@ -699,28 +706,35 @@ body.leaderboard-resize-active * {
     width: 100%;
     border-collapse: collapse;
     margin-top: 10px;
+    color: #ffffff;
 }
 
 .leaderboard-table th,
 .leaderboard-table td {
     padding: 8px;
     text-align: left;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+    color: #ffffff;
 }
 
 .leaderboard-table th {
-    color: #add8e6;
+    color: #ffffff;
     font-weight: bold;
 }
 
 .leaderboard-table tr.current-user {
-    background-color: rgba(100, 200, 255, 0.2);
+    background-color: rgba(255, 255, 255, 0.15);
+    color: #ffffff;
+}
+
+.leaderboard-table tr.current-user td {
+    color: #ffffff;
 }
 
 .no-leaderboard-data {
     text-align: center;
     padding: 20px;
-    color: rgba(255, 255, 255, 0.7);
+    color: #ffffff;
 }
 
 #back-button, #stats-button {
