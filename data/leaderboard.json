@@ -1,4 +1,24 @@
 {
-  "bestKills": {},
-  "totalKills": {}
+  "bestKills": {
+    "Megalodon_99": 38,
+    "KrakenHunter": 29,
+    "ViperFish_Pro": 24,
+    "AbyssalSniper": 21,
+    "CoralReef_X": 18,
+    "TsunamiFin": 15,
+    "DeepSeaStriker": 12,
+    "HydroBlade": 9,
+    "Striker_739": 4
+  },
+  "totalKills": {
+    "Megalodon_99": 245,
+    "KrakenHunter": 198,
+    "ViperFish_Pro": 162,
+    "AbyssalSniper": 135,
+    "CoralReef_X": 110,
+    "TsunamiFin": 87,
+    "DeepSeaStriker": 64,
+    "HydroBlade": 42,
+    "Striker_739": 17
+  }
 }

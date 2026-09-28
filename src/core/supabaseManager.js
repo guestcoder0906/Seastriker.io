@@ -135,10 +135,48 @@ export class SupabaseRealtimeManager {
 
     async fetchGlobalLeaderboardFromSupabase() {
         const client = this.getClient();
+        
+        // 1. Fetch from Supabase cloud storage (persistent global scores)
+        try {
+            if (client && client.storage) {
+                const { data: fileData, error: downloadErr } = await client.storage
+                    .from('global_leaderboard')
+                    .download('leaderboard.json');
+                
+                if (!downloadErr && fileData) {
+                    const text = await fileData.text();
+                    const parsed = JSON.parse(text);
+                    if (parsed && (Array.isArray(parsed.bestKills) || Array.isArray(parsed.totalKills))) {
+                        return {
+                            bestKills: Array.isArray(parsed.bestKills) ? parsed.bestKills : [],
+                            totalKills: Array.isArray(parsed.totalKills) ? parsed.totalKills : []
+                        };
+                    }
+                }
+            }
+        } catch (storageErr) {
+            // Try public fetch fallback
+        }
+
+        // Direct public URL fetch from Supabase Storage CDN
+        try {
+            const pubUrl = 'https://hguresgswifsjamgypcg.supabase.co/storage/v1/object/public/global_leaderboard/leaderboard.json';
+            const res = await fetch(pubUrl);
+            if (res.ok) {
+                const parsed = await res.json();
+                if (parsed && (Array.isArray(parsed.bestKills) || Array.isArray(parsed.totalKills))) {
+                    return {
+                        bestKills: Array.isArray(parsed.bestKills) ? parsed.bestKills : [],
+                        totalKills: Array.isArray(parsed.totalKills) ? parsed.totalKills : []
+                    };
+                }
+            }
+        } catch (e) {}
+
         if (!client) return null;
 
         try {
-            // Attempt to query common leaderboard table variations in Supabase
+            // 2. Also check common leaderboard table variations in Supabase database
             const possibleTables = ['leaderboard', 'global_leaderboard', 'player_scores', 'scores', 'players'];
             for (const tableName of possibleTables) {
                 try {
@@ -190,6 +228,43 @@ export class SupabaseRealtimeManager {
 
         const client = this.getClient();
         if (client) {
+            // 1. Save and merge into Supabase storage
+            try {
+                const current = await this.fetchGlobalLeaderboardFromSupabase() || { bestKills: [], totalKills: [] };
+                
+                // Merge best kills
+                const bestIdx = current.bestKills.findIndex(e => e.username.toLowerCase() === cleanUsername.toLowerCase());
+                if (bestIdx >= 0) {
+                    current.bestKills[bestIdx].score = Math.max(current.bestKills[bestIdx].score, bk);
+                } else if (bk > 0) {
+                    current.bestKills.push({ username: cleanUsername, score: bk });
+                }
+                current.bestKills.sort((a, b) => b.score - a.score);
+
+                // Merge total kills
+                const totalIdx = current.totalKills.findIndex(e => e.username.toLowerCase() === cleanUsername.toLowerCase());
+                if (totalIdx >= 0) {
+                    current.totalKills[totalIdx].score = Math.max(current.totalKills[totalIdx].score, tk);
+                } else if (tk > 0) {
+                    current.totalKills.push({ username: cleanUsername, score: tk });
+                }
+                current.totalKills.sort((a, b) => b.score - a.score);
+
+                await client.storage
+                    .from('global_leaderboard')
+                    .upload('leaderboard.json', JSON.stringify({
+                        updatedAt: new Date().toISOString(),
+                        bestKills: current.bestKills,
+                        totalKills: current.totalKills
+                    }), {
+                        contentType: 'application/json',
+                        upsert: true
+                    });
+            } catch (storageSaveErr) {
+                console.warn('[Supabase] Storage save note:', storageSaveErr);
+            }
+
+            // 2. Also attempt Postgres table upsert if tables exist
             const possibleTables = ['leaderboard', 'global_leaderboard', 'player_scores', 'scores'];
             for (const tableName of possibleTables) {
                 try {
@@ -217,7 +292,7 @@ export class SupabaseRealtimeManager {
             }
         }
 
-        // Always broadcast in real-time across the ocean to all online players
+        // Realtime broadcast to online peers
         this.sendScoreSubmit({
             username: cleanUsername,
             bestKills: bk,

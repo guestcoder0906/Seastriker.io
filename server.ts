@@ -86,6 +86,37 @@ function loadLeaderboard(): LeaderboardData {
 async function syncWithSupabaseDB(leaderboard: LeaderboardData): Promise<LeaderboardData> {
   if (!supabaseClient) return leaderboard;
   try {
+    // 1. First sync with Supabase persistent storage
+    try {
+      const { data: fileData, error: downloadErr } = await supabaseClient.storage
+        .from("global_leaderboard")
+        .download("leaderboard.json");
+      if (!downloadErr && fileData) {
+        const text = await fileData.text();
+        const parsed = JSON.parse(text);
+        if (parsed) {
+          if (Array.isArray(parsed.bestKills)) {
+            for (const item of parsed.bestKills) {
+              if (item && item.username && item.score) {
+                leaderboard.bestKills[item.username] = Math.max(leaderboard.bestKills[item.username] || 0, Number(item.score) || 0);
+              }
+            }
+          }
+          if (Array.isArray(parsed.totalKills)) {
+            for (const item of parsed.totalKills) {
+              if (item && item.username && item.score) {
+                leaderboard.totalKills[item.username] = Math.max(leaderboard.totalKills[item.username] || 0, Number(item.score) || 0);
+              }
+            }
+          }
+          saveLeaderboard(leaderboard);
+        }
+      }
+    } catch (storageErr) {
+      console.warn("[Server] Supabase storage sync notice:", storageErr);
+    }
+
+    // 2. Also check any database tables in Supabase
     const possibleTables = ["leaderboard", "global_leaderboard", "player_scores", "scores"];
     for (const tableName of possibleTables) {
       try {
@@ -112,6 +143,25 @@ async function syncWithSupabaseDB(leaderboard: LeaderboardData): Promise<Leaderb
     console.warn("[Server] Supabase sync notice:", err);
   }
   return leaderboard;
+}
+
+async function uploadLeaderboardToSupabase(leaderboard: LeaderboardData) {
+  if (!supabaseClient) return;
+  try {
+    const formatted = formatLeaderboard(leaderboard);
+    await supabaseClient.storage
+      .from("global_leaderboard")
+      .upload("leaderboard.json", JSON.stringify({
+        updatedAt: new Date().toISOString(),
+        bestKills: formatted.bestKills,
+        totalKills: formatted.totalKills
+      }), {
+        contentType: "application/json",
+        upsert: true
+      });
+  } catch (e) {
+    console.warn("[Server] Error uploading leaderboard to Supabase storage:", e);
+  }
 }
 
 function saveLeaderboard(data: LeaderboardData) {
@@ -205,6 +255,9 @@ async function startServer() {
 
     saveLeaderboard(leaderboard);
     roomState.globalLeaderboard = leaderboard;
+
+    // Persist to Supabase cloud storage
+    uploadLeaderboardToSupabase(leaderboard);
 
     if (supabaseClient) {
       const possibleTables = ["leaderboard", "global_leaderboard", "player_scores", "scores"];

@@ -95,7 +95,7 @@ export class GlobalLeaderboardService {
             }
         };
 
-        // 1. Fetch from Supabase Database (Persistent cloud Postgres for all players)
+        // 1. Fetch from Supabase (Persistent cloud database & storage for all players)
         try {
             if (this.game && this.game.room && this.game.room.supabase) {
                 const supabaseData = await this.game.room.supabase.fetchGlobalLeaderboardFromSupabase();
@@ -104,7 +104,20 @@ export class GlobalLeaderboardService {
                 }
             }
         } catch (err) {
-            console.warn('[Leaderboard] Supabase DB fetch notice:', err);
+            console.warn('[Leaderboard] Supabase fetch notice:', err);
+        }
+
+        // Direct fetch from Supabase public CDN endpoint if not yet loaded
+        if (combined.bestKills.length === 0 && combined.totalKills.length === 0) {
+            try {
+                const supaRes = await fetch('https://hguresgswifsjamgypcg.supabase.co/storage/v1/object/public/global_leaderboard/leaderboard.json');
+                if (supaRes.ok) {
+                    const supaJson = await supaRes.json();
+                    mergeEntries(supaJson);
+                }
+            } catch (supaErr) {
+                console.warn('[Leaderboard] Supabase direct CDN fetch notice:', supaErr);
+            }
         }
         
         // 2. Fetch from server REST API
