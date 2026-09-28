@@ -8,21 +8,75 @@ export class SquidAbilities {
     }
 
     updateInkStamina(squid, deltaTime) {
-        // Update ink stamina cooldown
-        if (!squid.inkReady && squid.inkCooldown > 0) {
-            // Apply modifier if available (for faster ink regeneration)
-            if (squid.inkCooldownModifier) {
-                const reduction = deltaTime * squid.inkCooldownModifier;
-                squid.inkCooldown -= reduction;
+        if (!squid || !squid.isAlive) return squid;
+
+        // Octopus uses camouflage instead of ink
+        if (squid.skinId === 'octopus') {
+            squid.inkReady = false;
+            squid.inkCooldown = 0;
+            delete squid._inkFiredTime;
+            return squid;
+        }
+
+        // Standardize deltaTime to milliseconds (deltaTime could be in seconds like 0.0166s or frames like 1.0)
+        let dtMs = 1000 / 60; // default 16.67ms
+        if (typeof deltaTime === 'number' && Number.isFinite(deltaTime) && deltaTime > 0) {
+            if (deltaTime < 0.5) {
+                // deltaTime is in seconds (e.g. 0.01667)
+                dtMs = deltaTime * 1000;
+            } else if (deltaTime <= 10) {
+                // deltaTime is in frame count (e.g. 1.0 or 2.0 steps)
+                dtMs = deltaTime * (1000 / 60);
             } else {
-                squid.inkCooldown -= deltaTime;
-            }
-            
-            if (squid.inkCooldown <= 0) {
-                squid.inkReady = true;
-                squid.inkCooldown = 0;
+                // deltaTime is already in milliseconds
+                dtMs = deltaTime;
             }
         }
+
+        const baseCooldown = CONFIG.SQUID_INK_COOLDOWN || 7000;
+        const modifier = (typeof squid.inkCooldownModifier === 'number' && squid.inkCooldownModifier > 0)
+            ? squid.inkCooldownModifier
+            : 1.0;
+        const cooldownDuration = baseCooldown / modifier;
+
+        // If ink is ready, ensure cooldown values are clean
+        if (squid.inkReady) {
+            squid.inkCooldown = 0;
+            delete squid._inkFiredTime;
+            return squid;
+        }
+
+        // Safety fallback 1: wall-clock timestamp guarantees ink ALWAYS regenerates
+        // even during background tab throttling, lag spikes, or delta time anomalies
+        if (squid._inkFiredTime) {
+            const elapsed = performance.now() - squid._inkFiredTime;
+            if (elapsed >= cooldownDuration) {
+                squid.inkReady = true;
+                squid.inkCooldown = 0;
+                delete squid._inkFiredTime;
+                return squid;
+            }
+        }
+
+        // Safety fallback 2: recover if inkReady is false but cooldown is invalid or depleted
+        if (!Number.isFinite(squid.inkCooldown) || squid.inkCooldown <= 0) {
+            if (!squid._inkFiredTime) {
+                squid.inkReady = true;
+                squid.inkCooldown = 0;
+                return squid;
+            }
+        }
+
+        // Decrement cooldown using standardized milliseconds
+        const reduction = dtMs * modifier;
+        squid.inkCooldown = Math.max(0, (squid.inkCooldown || cooldownDuration) - reduction);
+
+        if (squid.inkCooldown <= 0) {
+            squid.inkReady = true;
+            squid.inkCooldown = 0;
+            delete squid._inkFiredTime;
+        }
+
         return squid;
     }
 

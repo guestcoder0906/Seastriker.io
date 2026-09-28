@@ -222,15 +222,42 @@ export class SquidRenderer {
             drawStaminaIndicator(ctx, squid, headX - 8, headY, -CONFIG.SEGMENT_SIZE * 2 - 2);
             const staminaRadius = 5;
             
-            // Draw ink ability indicator (blue/gray)
+            // Draw ink ability indicator (blue/gray with recharge progress)
             const inkX = headX + 8;
             const inkY = headY - CONFIG.SEGMENT_SIZE * 2 - 2;
+
+            // Background circle (gray)
             ctx.beginPath();
             ctx.arc(inkX, inkY, staminaRadius, 0, Math.PI * 2);
-            ctx.fillStyle = squid.inkReady ? 'blue' : 'gray';
+            ctx.fillStyle = 'gray';
             ctx.fill();
+
+            if (squid.inkReady) {
+                // Fully ready: full blue
+                ctx.beginPath();
+                ctx.arc(inkX, inkY, staminaRadius, 0, Math.PI * 2);
+                ctx.fillStyle = '#1e90ff';
+                ctx.fill();
+            } else {
+                // Regenerating: show filling radial arc as cooldown progresses
+                const maxCooldown = (CONFIG.SQUID_INK_COOLDOWN || 7000) / (squid.inkCooldownModifier || 1.0);
+                const remaining = Math.max(0, squid.inkCooldown || 0);
+                const progress = maxCooldown > 0 ? Math.max(0, Math.min(1.0, 1.0 - remaining / maxCooldown)) : 0;
+                
+                if (progress > 0) {
+                    ctx.beginPath();
+                    ctx.moveTo(inkX, inkY);
+                    ctx.arc(inkX, inkY, staminaRadius, -Math.PI / 2, -Math.PI / 2 + progress * Math.PI * 2);
+                    ctx.closePath();
+                    ctx.fillStyle = '#1e90ff';
+                    ctx.fill();
+                }
+            }
+
             ctx.strokeStyle = 'white';
             ctx.lineWidth = 0.5;
+            ctx.beginPath();
+            ctx.arc(inkX, inkY, staminaRadius, 0, Math.PI * 2);
             ctx.stroke();
         }
     }

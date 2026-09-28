@@ -44,6 +44,12 @@ export class CreatureFactory {
                 
                 // Remove ink ability for octopus
                 squid.inkReady = false;
+                squid.inkCooldown = 0;
+                delete squid._inkFiredTime;
+            } else {
+                squid.inkReady = true;
+                squid.inkCooldown = 0;
+                delete squid._inkFiredTime;
             }
             
             return squid;

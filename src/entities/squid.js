@@ -526,6 +526,13 @@ export class Squid extends Creature {
         return false; // Squids don't have tusks for self-collision
     }
 
+    respawn(x, y) {
+        super.respawn(x, y);
+        this.inkReady = this.skinId !== 'octopus';
+        this.inkCooldown = 0;
+        delete this._inkFiredTime;
+    }
+
     getPresenceData() {
         const presence = super.getPresenceData();
         presence.segments = this.segments.map(s => ({

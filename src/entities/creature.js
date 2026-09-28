@@ -119,6 +119,13 @@ export class Creature {
         this.health = CONFIG.MAX_HEALTH;
         this.kills = 0;
         
+        // Reset ink ability state
+        if (this.type === 'squid') {
+            this.inkReady = this.skinId !== 'octopus';
+            this.inkCooldown = 0;
+            delete this._inkFiredTime;
+        }
+        
         // Reset upgrades
         this.upgrades = {};
         this.tuskLengthModifier = 1.0;

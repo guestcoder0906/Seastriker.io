@@ -24,6 +24,7 @@ export class InkSystem {
         if (this.game.creature.type !== 'squid') return false;
         if (this.game.creature.skinId === 'octopus') return false;
         if (!this.game.creature.inkReady) return false;
+        if (this.game.creature.inkCooldown > 0) return false;
         
         this.createInkCloud(this.game.creature);
         return true;
@@ -61,14 +62,23 @@ export class InkSystem {
         
         // Set cooldown for squid
         squid.inkReady = false;
-        squid.inkCooldown = CONFIG.SQUID_INK_COOLDOWN || 7000;
+        const cooldown = (CONFIG.SQUID_INK_COOLDOWN || 7000) / (squid.inkCooldownModifier || 1.0);
+        squid.inkCooldown = cooldown;
+        squid._inkFiredTime = performance.now();
         
         // If this is the local player, update presence and mobile controls
         if (squid.id === this.game.room.clientId) {
-            this.game.room.updatePresence({
-                inkReady: false,
-                inkCooldown: CONFIG.SQUID_INK_COOLDOWN || 7000
-            });
+            if (this.game.mobileControlsManager) {
+                this.game.mobileControlsManager.updateControlsVisibility();
+            }
+            if (typeof squid.getPresenceData === 'function') {
+                this.game.room.updatePresence(squid.getPresenceData());
+            } else {
+                this.game.room.updatePresence({
+                    inkReady: false,
+                    inkCooldown: cooldown
+                });
+            }
             
             // Broadcast ink cloud to other players
             if (this.game.room && typeof this.game.room.requestPresenceUpdate === 'function') {

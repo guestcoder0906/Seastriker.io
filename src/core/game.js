@@ -468,6 +468,20 @@ class NarwhaleGame {
             }
         }
         
+        // Update AI squid abilities (ink cooldown & regeneration)
+        if (this.squidAbilities && this.aiController?.aiPlayers) {
+            for (const aiId in this.aiController.aiPlayers) {
+                const aiPlayer = this.aiController.aiPlayers[aiId];
+                if (aiPlayer && aiPlayer.creature && aiPlayer.creature.type === 'squid' && aiPlayer.creature.skinId !== 'octopus') {
+                    this.squidAbilities.updateInkStamina(aiPlayer.creature, deltaTime);
+                    if (this.aiController.aiPresences && this.aiController.aiPresences[aiId]) {
+                        this.aiController.aiPresences[aiId].inkReady = aiPlayer.creature.inkReady;
+                        this.aiController.aiPresences[aiId].inkCooldown = aiPlayer.creature.inkCooldown;
+                    }
+                }
+            }
+        }
+        
         this.aiCleanup.checkForStaleAI();
         
         // Update octopus tentacle effect system

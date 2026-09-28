@@ -113,6 +113,12 @@ export class GameInitializer {
                     
                     // Remove ink ability for octopus
                     creature.inkReady = false;
+                    creature.inkCooldown = 0;
+                    delete creature._inkFiredTime;
+                } else if (creatureType === 'squid') {
+                    creature.inkReady = true;
+                    creature.inkCooldown = 0;
+                    delete creature._inkFiredTime;
                 }
             }
         }
