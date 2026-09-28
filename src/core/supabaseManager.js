@@ -226,7 +226,7 @@ export class SupabaseRealtimeManager {
         // 1. Presence Sync
         this.channel.on('presence', { event: 'sync' }, () => {
             const state = this.channel.presenceState();
-            const newPeers = {};
+            const newPeers = { ...this.peers };
             newPeers[this.clientId] = { id: this.clientId, username: this.username };
 
             for (const [key, presences] of Object.entries(state)) {
@@ -236,7 +236,8 @@ export class SupabaseRealtimeManager {
                         id: key,
                         username: latest.username || latest.name || ('Player_' + key.substring(0, 4))
                     };
-                    if (key !== this.clientId && latest.segments) {
+                    // Only initialize remotePresence if we don't already have live position data for them
+                    if (key !== this.clientId && !this.remotePresences[key] && latest.segments && latest.segments.length > 0) {
                         this.remotePresences[key] = latest;
                     }
                 }
@@ -255,7 +256,7 @@ export class SupabaseRealtimeManager {
                     id: key,
                     username: latest.username || latest.name || ('Player_' + key.substring(0, 4))
                 };
-                if (key !== this.clientId && latest.segments) {
+                if (key !== this.clientId && !this.remotePresences[key] && latest.segments && latest.segments.length > 0) {
                     this.remotePresences[key] = latest;
                 }
                 this.notifyAnnouncement({
@@ -317,9 +318,14 @@ export class SupabaseRealtimeManager {
         this.channel.on('broadcast', { event: 'pos' }, ({ payload }) => {
             if (!payload || !payload.id || payload.id === this.clientId) return;
             const existing = this.remotePresences[payload.id];
-            if (existing && existing.t && payload.t && payload.t < existing.t) {
-                return; // Drop out-of-order delayed packet
+            // Only drop if within a small out-of-order jitter window (<1200ms)
+            // If payload.t jumped backwards by >1200ms, it's a page reload or clock reset, so accept it!
+            if (existing && existing.t && payload.t) {
+                if (payload.t < existing.t && (existing.t - payload.t) < 1200) {
+                    return; // Drop delayed duplicate packet
+                }
             }
+            payload.lastSeen = performance.now();
             this.remotePresences[payload.id] = payload;
             if (payload.name && !this.peers[payload.id]) {
                 this.peers[payload.id] = { id: payload.id, username: payload.name };
@@ -384,8 +390,23 @@ export class SupabaseRealtimeManager {
                     event: 'ping',
                     payload: { senderId: this.clientId, t: this.lastPingSent }
                 }).catch(() => {});
+
+                // Gracefully prune stale remote presences with no updates for > 7 seconds
+                const now = performance.now();
+                let pruned = false;
+                for (const id in this.remotePresences) {
+                    const pres = this.remotePresences[id];
+                    if (pres && pres.lastSeen && (now - pres.lastSeen > 7000)) {
+                        delete this.remotePresences[id];
+                        delete this.peers[id];
+                        pruned = true;
+                    }
+                }
+                if (pruned) {
+                    this.notifyPresenceUpdate();
+                }
             }
-        }, 5000);
+        }, 3000);
     }
 
     async disconnect() {

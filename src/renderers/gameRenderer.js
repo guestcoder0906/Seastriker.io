@@ -243,6 +243,10 @@ export class GameRenderer {
     }
 
     drawCreatureByType(ctx, creature, isLocalPlayer = false) {
+        if (!creature || !creature.segments || !Array.isArray(creature.segments) || creature.segments.length === 0 || !creature.segments[0]) {
+            return;
+        }
+
         // Skip rendering if creature should be hidden
         if (this.game.coralReefSystem && !this.game.coralReefSystem.shouldRenderCreature(creature)) {
             return;

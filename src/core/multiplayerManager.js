@@ -43,11 +43,16 @@ export class MultiplayerManager {
         // Forward callbacks from Supabase Realtime
         this.supabase.subscribePresence((remotePresences) => {
             if (this.gameMode === 'multiplayer') {
+                const updated = {};
+                if (this.localPresences[this.clientId]) {
+                    updated[this.clientId] = this.localPresences[this.clientId];
+                }
                 for (const [key, pres] of Object.entries(remotePresences)) {
                     if (key !== this.clientId) {
-                        this.localPresences[key] = pres;
+                        updated[key] = pres;
                     }
                 }
+                this.localPresences = updated;
                 this.peers = { ...this.peers, ...this.supabase.peers };
                 this.notifyPresence();
             }
@@ -98,8 +103,10 @@ export class MultiplayerManager {
                 } else if (msg.type === 'presence' && msg.clientId && msg.data) {
                     if (msg.clientId !== this.clientId) {
                         const existing = this.localPresences[msg.clientId];
-                        if (existing && existing.t && msg.t && msg.t < existing.t) {
-                            return; // drop out-of-order packet
+                        if (existing && existing.t && msg.t) {
+                            if (msg.t < existing.t && (existing.t - msg.t) < 1200) {
+                                return; // drop delayed duplicate packet
+                            }
                         }
                         if (msg.t) msg.data.t = msg.t;
                         this.localPresences[msg.clientId] = msg.data;

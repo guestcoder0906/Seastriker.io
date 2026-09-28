@@ -228,16 +228,20 @@ class NarwhaleGame {
         }
 
         const validIds = new Set();
-        // Frame-rate independent smoothing (gives ~0.3 lerp factor at 60fps)
-        const lerpFactor = Math.min(1.0, 1.0 - Math.exp(-24 * Math.min(deltaTime, 0.1)));
+        // Frame-rate independent smoothing
+        const lerpFactor = Math.min(1.0, 1.0 - Math.exp(-22 * Math.min(deltaTime, 0.1)));
+
+        const normalizeAngle = (a) => {
+            while (a > Math.PI) a -= Math.PI * 2;
+            while (a < -Math.PI) a += Math.PI * 2;
+            return a;
+        };
 
         const lerpAngle = (cur, tgt, f) => {
             if (cur === undefined) return tgt;
             if (tgt === undefined) return cur;
-            let diff = (tgt - cur) % (Math.PI * 2);
-            if (diff > Math.PI) diff -= Math.PI * 2;
-            if (diff < -Math.PI) diff += Math.PI * 2;
-            return cur + diff * f;
+            let diff = normalizeAngle(tgt - cur);
+            return normalizeAngle(cur + diff * f);
         };
 
         for (const clientId in this.playerPresences) {
@@ -303,7 +307,7 @@ class NarwhaleGame {
                         const headDistSq = (target.segments[0].x - current.segments[0].x) ** 2 + 
                                            (target.segments[0].y - current.segments[0].y) ** 2;
                         
-                        if (headDistSq > 350 * 350) {
+                        if (headDistSq > 400 * 400) {
                             // Snap immediately on large jump / spawn / teleport
                             for (let i = 0; i < target.segments.length; i++) {
                                 current.segments[i].x = target.segments[i].x;
@@ -321,6 +325,10 @@ class NarwhaleGame {
                                 curSeg.scale = tgtSeg.scale;
                             }
                         }
+                    }
+                    if (current.segments && current.segments[0]) {
+                        current.x = current.segments[0].x;
+                        current.y = current.segments[0].y;
                     }
                 }
             }
