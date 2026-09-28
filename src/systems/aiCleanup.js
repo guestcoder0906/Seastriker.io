@@ -25,6 +25,9 @@ export class AICleanup {
             delete this.game.playerPresences[aiId];
             delete this.game.aiController.aiPresences[aiId];
             delete this.game.players[aiId]; // Also remove from players collection
+            if (this.game.interpolatedPresences) {
+                delete this.game.interpolatedPresences[aiId];
+            }
             
             // Clean up any tentacle-related references
             if (this.game.squidAbilities && this.game.squidAbilities.tentacleHitboxes) {

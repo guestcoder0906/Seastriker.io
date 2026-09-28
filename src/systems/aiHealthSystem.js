@@ -39,22 +39,12 @@ export class AIHealthSystem {
 
             const aiId = narwhal.id;
 
-            // Immediately remove AI presence so the dead creature is removed from the map
-            delete this.game.playerPresences[aiId];
-            delete this.game.aiController.aiPresences[aiId];
-            if (this.game.interpolatedPresences) {
-                delete this.game.interpolatedPresences[aiId];
-            }
-            if (this.game.players) {
-                delete this.game.players[aiId];
-            }
-
             // Handle attacker kill count increment if attacker is an AI or remote player
             if (attackerClientId) {
                 if (attackerClientId.startsWith('ai-')) {
                     const attackerAI = this.game.aiController.aiPlayers[attackerClientId];
                     if (attackerAI && attackerAI.creature) {
-                        attackerAI.creature.kills++;
+                        attackerAI.creature.kills = (attackerAI.creature.kills || 0) + 1;
                         this.game.aiController.aiPresences[attackerClientId] = attackerAI.creature.getPresenceData();
                         this.game.playerPresences[attackerClientId] = this.game.aiController.aiPresences[attackerClientId];
                     }
@@ -70,26 +60,10 @@ export class AIHealthSystem {
                 }
             }
 
-            // Respawn after delay
-            setTimeout(() => {
-                const margin = 300;
-                const x = margin + Math.random() * (CONFIG.WORLD_WIDTH - 2 * margin);
-                const y = margin + Math.random() * (CONFIG.WORLD_HEIGHT - 2 * margin);
-
-                const color = this.game.getRandomCreatureColor();
-                const name = narwhal.name;
-                const respawnedCreature = CreatureFactory.createCreature(aiId, x, y, color, name);
-
-                aiPlayer.creature = respawnedCreature;
-                narwhal = respawnedCreature;
-
-                this.game.narwhalSpeed.initializeNarwhal(narwhal);
-
-                narwhal.respawn(x, y);
-
-                this.game.aiController.aiPresences[aiId] = narwhal.getPresenceData();
-                this.game.playerPresences[aiId] = this.game.aiController.aiPresences[aiId];
-            }, 2000);
+            // Clean up the dead AI player from all collections so it cannot linger frozen
+            if (this.game.aiController) {
+                this.game.aiController.removeAIPlayer(aiId);
+            }
 
             return true;
         } else {

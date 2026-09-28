@@ -181,14 +181,22 @@ class NarwhaleGame {
     }
 
     handlePresenceUpdate(presences) {
-        this.playerPresences = { ...presences };
+        const realPlayerPresences = {};
+        for (const [id, pres] of Object.entries(presences || {})) {
+            // Only accept real network players; AI is managed strictly by local AIController
+            if (!id.startsWith('ai-')) {
+                realPlayerPresences[id] = pres;
+            }
+        }
+        this.playerPresences = realPlayerPresences;
         
         if (this.gameActive && this.creature && this.creature.isAlive) {
             this.playerPresences[this.room.clientId] = this.creature.getPresenceData();
         }
         
-        for (const aiId in this.aiController.aiPlayers) {
-            if (this.aiController.aiPresences[aiId]) {
+        for (const aiId in this.aiController?.aiPlayers || {}) {
+            const ai = this.aiController.aiPlayers[aiId];
+            if (ai && ai.creature && ai.creature.isAlive && this.aiController.aiPresences[aiId]) {
                 this.playerPresences[aiId] = this.aiController.aiPresences[aiId];
             }
         }
@@ -265,15 +273,16 @@ class NarwhaleGame {
                 continue;
             }
 
-            validIds.add(clientId);
-
             // Local AI players run at full frame rate on the host
-            if (clientId.startsWith('ai-') && this.aiController?.aiPresences[clientId]) {
-                const aiPres = this.aiController.aiPresences[clientId];
-                if (aiPres && aiPres.isAlive !== false && (typeof aiPres.health !== 'number' || aiPres.health > 0)) {
+            if (clientId.startsWith('ai-')) {
+                const aiPlayer = this.aiController?.aiPlayers[clientId];
+                const aiPres = this.aiController?.aiPresences[clientId];
+                if (aiPlayer && aiPlayer.creature && aiPlayer.creature.isAlive && aiPres && aiPres.isAlive !== false && (typeof aiPres.health !== 'number' || aiPres.health > 0)) {
                     this.interpolatedPresences[clientId] = aiPres;
+                    validIds.add(clientId);
                 } else {
                     delete this.interpolatedPresences[clientId];
+                    delete this.playerPresences[clientId];
                     delete this.players[clientId];
                 }
                 continue;

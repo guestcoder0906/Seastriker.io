@@ -103,13 +103,18 @@ export class AIController {
         // Initialize speed properties
         this.narwhalSpeed.initializeNarwhal(aiCreature);
         
+        // Pick an initial exploration target away from spawn so the AI moves immediately
+        const targetMargin = 200;
+        const targetX = targetMargin + Math.random() * (CONFIG.WORLD_WIDTH - 2 * targetMargin);
+        const targetY = targetMargin + Math.random() * (CONFIG.WORLD_HEIGHT - 2 * targetMargin);
+
         // Add to AI players collection
         this.aiPlayers[aiId] = {
             creature: aiCreature, 
             target: null,
             state: 'exploring',  
-            targetX: x,
-            targetY: y,
+            targetX: targetX,
+            targetY: targetY,
             mousePressed: false,
             dodgePressed: false,
             lastStateChange: performance.now(),
@@ -140,6 +145,9 @@ export class AIController {
         delete this.decisionCooldowns[aiId];
         delete this.aiPresences[aiId];
         delete this.game.players[aiId]; // Also remove from players collection
+        if (this.game.interpolatedPresences) {
+            delete this.game.interpolatedPresences[aiId];
+        }
         
         // Also clean any tentacle-related references
         if (this.game.squidAbilities && this.game.squidAbilities.tentacleHitboxes) {
@@ -154,7 +162,10 @@ export class AIController {
 
     updateAIPlayer(aiId) {
         const ai = this.aiPlayers[aiId];
-        if (!ai || !ai.creature || !ai.creature.isAlive) return;
+        if (!ai || !ai.creature || !ai.creature.isAlive) {
+            this.removeAIPlayer(aiId);
+            return;
+        }
         
         // Update cooldowns
         for (const type in this.decisionCooldowns[aiId]) {
