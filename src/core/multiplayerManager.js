@@ -9,7 +9,7 @@ export class MultiplayerManager {
         
         this.socket = null;
         this.channel = null;
-        this.isServerConnected = false;
+        this._isServerConnected = false;
         
         this.peers = { ...this.supabase.peers };
         this.localPresences = {};
@@ -171,7 +171,11 @@ export class MultiplayerManager {
 
     get isServerConnected() {
         if (this.gameMode === 'singleplayer') return false;
-        return this.supabase.connectionStatus === 'connected' || (this.socket && this.socket.connected);
+        return Boolean(this._isServerConnected || this.supabase.connectionStatus === 'connected' || (this.socket && this.socket.connected));
+    }
+
+    set isServerConnected(val) {
+        this._isServerConnected = Boolean(val);
     }
 
     get connectionStatus() {

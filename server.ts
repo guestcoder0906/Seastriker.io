@@ -113,12 +113,18 @@ async function startServer() {
 
   // REST API Endpoints for global leaderboard
   app.get("/api/multiplayer-config", (req, res) => {
-    const url = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || "";
-    const anonKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || "";
+    const url = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || "https://hguresgswifsjamgypcg.supabase.co";
+    const secretKey =
+      process.env.SUPABASE_SECRET_KEY ||
+      process.env.VITE_SUPABASE_SECRET_KEY ||
+      process.env.VITE_SUPABASE_ANON_KEY ||
+      process.env.SUPABASE_ANON_KEY ||
+      "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhndXJlc2dzd2lmc2phbWd5cGNnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA1Mjc1MzksImV4cCI6MjEwNjEwMzUzOX0.B-pFItn9R0R3SIGvACysblN1-Wy6OhrhX27xspAsvtA";
     res.json({
-      useSupabase: Boolean(url && anonKey),
+      useSupabase: Boolean(url && secretKey),
       supabaseUrl: url,
-      supabaseAnonKey: anonKey
+      supabaseSecretKey: secretKey,
+      supabaseKey: secretKey
     });
   });
 

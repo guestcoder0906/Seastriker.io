@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 
 const DEFAULT_SUPABASE_URL = 'https://hguresgswifsjamgypcg.supabase.co';
-const DEFAULT_SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhndXJlc2dzd2lmc2phbWd5cGNnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA1Mjc1MzksImV4cCI6MjEwNjEwMzUzOX0.B-pFItn9R0R3SIGvACysblN1-Wy6OhrhX27xspAsvtA';
+const DEFAULT_SUPABASE_SECRET_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhndXJlc2dzd2lmc2phbWd5cGNnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA1Mjc1MzksImV4cCI6MjEwNjEwMzUzOX0.B-pFItn9R0R3SIGvACysblN1-Wy6OhrhX27xspAsvtA';
 
 export class SupabaseRealtimeManager {
     constructor() {
@@ -47,14 +47,28 @@ export class SupabaseRealtimeManager {
         let url = '';
         let key = '';
 
+        // 1. Check client Vite build environment, prioritizing SUPABASE_SECRET_KEY / VITE_SUPABASE_SECRET_KEY
         if (typeof import.meta !== 'undefined' && import.meta.env) {
-            url = import.meta.env.VITE_SUPABASE_URL || '';
-            key = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+            url = import.meta.env.VITE_SUPABASE_URL || import.meta.env.SUPABASE_URL || '';
+            key = import.meta.env.SUPABASE_SECRET_KEY ||
+                  import.meta.env.VITE_SUPABASE_SECRET_KEY ||
+                  import.meta.env.VITE_SUPABASE_ANON_KEY ||
+                  import.meta.env.SUPABASE_ANON_KEY || '';
         }
 
+        // 2. Check process.env (Node runtime or Vite define)
+        if (!key && typeof process !== 'undefined' && process.env) {
+            url = url || process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || '';
+            key = process.env.SUPABASE_SECRET_KEY ||
+                  process.env.VITE_SUPABASE_SECRET_KEY ||
+                  process.env.VITE_SUPABASE_ANON_KEY ||
+                  process.env.SUPABASE_ANON_KEY || '';
+        }
+
+        // 3. Fallback to default credentials
         if (!url || !key) {
-            url = DEFAULT_SUPABASE_URL;
-            key = DEFAULT_SUPABASE_ANON_KEY;
+            url = url || DEFAULT_SUPABASE_URL;
+            key = key || DEFAULT_SUPABASE_SECRET_KEY;
         }
 
         return {
