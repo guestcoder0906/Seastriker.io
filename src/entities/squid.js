@@ -546,9 +546,11 @@ export class Squid extends Creature {
             scale: s.scale
         })));
         
-        // Add ink ability data
+        // Add ink ability and camouflage data
         presence.inkReady = this.inkReady;
         presence.inkCooldown = this.inkCooldown;
+        presence.isCamouflaged = Boolean(this.isCamouflaged);
+        presence.camouflageActiveTimer = this.camouflageActiveTimer || 0;
         
         return presence;
     }

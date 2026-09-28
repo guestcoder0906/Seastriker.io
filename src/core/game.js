@@ -278,6 +278,11 @@ class NarwhaleGame {
                 current.camouflageActiveTimer = target.camouflageActiveTimer;
                 current.upgrades = target.upgrades || current.upgrades;
 
+                // Sync tentacles for squids and octopuses
+                if (Array.isArray(target.tentacles)) {
+                    current.tentacles = target.tentacles;
+                }
+
                 // Interpolate rotation angle
                 if (target.rotationAngle !== undefined) {
                     current.rotationAngle = lerpAngle(current.rotationAngle ?? target.rotationAngle, target.rotationAngle, lerpFactor);
@@ -385,16 +390,6 @@ class NarwhaleGame {
             
             this.updateCamera();
             
-            // Keep local player presence current for AI targeting and collision detection
-            this.playerPresences[this.room.clientId] = this.creature.getPresenceData();
-            if (this.interpolatedPresences) {
-                this.interpolatedPresences[this.room.clientId] = this.creature.getPresenceData();
-            }
-            
-            this.playerController.checkCollisions();
-            
-            this.room.updatePresence(this.creature.getPresenceData());
-            
             if (this.creature.type === 'squid') {
                 const wasReady = this.creature.inkReady;
                 this.squidAbilities.updateInkStamina(this.creature, deltaTime);
@@ -406,15 +401,17 @@ class NarwhaleGame {
             if (this.creature.type === 'squid' && this.creature.skinId === 'octopus') {
                 this.octopusAbilities.updateCamouflageStatus(this.creature, deltaTime);
                 this.octopusAbilities.applyCamouflageUpgrades(this.creature);
-                
-                // Update presence with camouflage status
-                if (this.creature.isCamouflaged) {
-                    this.room.updatePresence({
-                        isCamouflaged: this.creature.isCamouflaged,
-                        camouflageActiveTimer: this.creature.camouflageActiveTimer
-                    });
-                }
             }
+
+            const localPresence = this.creature.getPresenceData();
+            this.playerPresences[this.room.clientId] = localPresence;
+            if (this.interpolatedPresences) {
+                this.interpolatedPresences[this.room.clientId] = localPresence;
+            }
+            
+            this.playerController.checkCollisions();
+            
+            this.room.updatePresence(localPresence);
             
             this.playerStats.updateCurrentKills(this.creature.kills);
         } else if (this.gameActive && this.creature && !this.creature.isAlive) {

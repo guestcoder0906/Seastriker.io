@@ -183,7 +183,9 @@ export class Creature {
             inkCooldown: this.inkCooldown,
             inkCooldownModifier: this.inkCooldownModifier,
             tentacleDamageModifier: this.tentacleDamageModifier,
-            isHiddenInReef: this.isHiddenInReef,
+            isHiddenInReef: Boolean(this.isHiddenInReef),
+            isCamouflaged: Boolean(this.isCamouflaged),
+            camouflageActiveTimer: this.camouflageActiveTimer || 0,
         };
     }
     

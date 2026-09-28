@@ -207,10 +207,12 @@ export class CoralReefSystem {
         if (!creature.isDashing) {
             creature.speed = 0;
             hiddenCreature.isHidden = true;
+            creature.isHiddenInReef = true;
         } else {
             // Allow movement if creature is actively dashing (boosting)
             creature.speed = hiddenCreature.originalSpeed * CONFIG.DASH_MULTIPLIER;
             hiddenCreature.isHidden = false;
+            creature.isHiddenInReef = false;
         }
 
         if (clientId === this.game.room.clientId) {
@@ -306,6 +308,7 @@ export class CoralReefSystem {
         if (!hiddenCreature) return;
 
         creature.speed = hiddenCreature.originalSpeed;
+        creature.isHiddenInReef = false;
 
         if (clientId === this.game.room.clientId) {
             this.game.room.updatePresence({
