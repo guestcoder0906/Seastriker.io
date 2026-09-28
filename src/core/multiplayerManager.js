@@ -206,21 +206,14 @@ export class MultiplayerManager {
         // 2. Try connecting to Node Socket.IO backend if one is running
         try {
             this.socket = io({
-                auth: { username },
-                timeout: 800,
-                reconnectionAttempts: 2,
+                auth: { username, clientId: this.clientId },
+                timeout: 1000,
+                reconnectionAttempts: 3,
                 transports: ['websocket', 'polling']
             });
 
             this.socket.on('init', (data) => {
                 this.isServerConnected = true;
-                if (data.id) {
-                    this.clientId = data.id;
-                    this.supabase.clientId = data.id;
-                    if (typeof window !== 'undefined' && window.game && window.game.creature) {
-                        window.game.creature.id = this.clientId;
-                    }
-                }
                 if (data.roomState) this.roomState = data.roomState;
                 if (data.peers) this.peers = { ...this.peers, ...data.peers };
             });

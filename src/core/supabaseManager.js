@@ -7,7 +7,7 @@ export class SupabaseRealtimeManager {
     constructor() {
         this.client = null;
         this.channel = null;
-        this.clientId = 'player_' + Math.random().toString(36).substring(2, 9);
+        this.clientId = this.loadInitialClientId();
         this.username = this.loadInitialUsername();
         this.currentRoom = 'ocean-global-1';
         
@@ -17,6 +17,8 @@ export class SupabaseRealtimeManager {
         this.presenceRequestCallbacks = [];
         this.combatCallbacks = [];
         this.announcementCallbacks = [];
+        this.leaderboardCallbacks = [];
+        this.scoreSubmitCallbacks = [];
         
         this.peers = {};
         this.remotePresences = {};
@@ -29,6 +31,34 @@ export class SupabaseRealtimeManager {
         this.pingInterval = null;
 
         this.peers[this.clientId] = { id: this.clientId, username: this.username };
+        
+        this.setupUnloadListeners();
+    }
+
+    loadInitialClientId() {
+        try {
+            const saved = sessionStorage.getItem('sea_striker_client_id');
+            if (saved && saved.startsWith('player_')) return saved;
+            const newId = 'player_' + Math.random().toString(36).substring(2, 9);
+            sessionStorage.setItem('sea_striker_client_id', newId);
+            return newId;
+        } catch (e) {
+            return 'player_' + Math.random().toString(36).substring(2, 9);
+        }
+    }
+
+    setupUnloadListeners() {
+        if (typeof window === 'undefined') return;
+        const handleUnload = () => {
+            if (this.channel && this.connectionStatus === 'connected') {
+                this.broadcast('peer_leave', { id: this.clientId, username: this.username });
+                try {
+                    this.channel.untrack();
+                } catch (e) {}
+            }
+        };
+        window.addEventListener('beforeunload', handleUnload);
+        window.addEventListener('pagehide', handleUnload);
     }
 
     loadInitialUsername() {
@@ -107,24 +137,23 @@ export class SupabaseRealtimeManager {
     }
 
     async connect(roomCode = null) {
-        if (roomCode) {
-            this.currentRoom = roomCode.trim();
-        }
-
-        const creds = this.getCredentials();
-        if (!creds.url || !creds.key) {
-            this.notifyStatus('error', { error: 'No Supabase credentials configured.' });
-            return false;
-        }
-
-        if (this.connectionStatus === 'connected' && this.channel) {
+        const targetRoom = roomCode ? roomCode.trim() : this.currentRoom;
+        
+        if (this.connectionStatus === 'connected' && this.channel && this.currentRoom === targetRoom) {
             return true;
         }
-
+        
+        this.currentRoom = targetRoom;
         await this.disconnect();
         this.notifyStatus('connecting');
 
         try {
+            const creds = this.getCredentials();
+            if (!creds.url || !creds.key) {
+                this.notifyStatus('error', { error: 'No Supabase credentials configured.' });
+                return false;
+            }
+
             this.client = createClient(creds.url, creds.key, {
                 realtime: {
                     params: {
@@ -249,6 +278,39 @@ export class SupabaseRealtimeManager {
                 });
             }
             this.notifyPresenceUpdate();
+        });
+
+        // 3b. Fast explicit peer leave broadcast
+        this.channel.on('broadcast', { event: 'peer_leave' }, ({ payload }) => {
+            if (payload && payload.id) {
+                const leavingUser = payload.username || this.peers[payload.id]?.username;
+                delete this.peers[payload.id];
+                delete this.remotePresences[payload.id];
+                if (leavingUser) {
+                    this.notifyAnnouncement({
+                        type: 'leave',
+                        username: leavingUser
+                    });
+                }
+                this.notifyPresenceUpdate();
+            }
+        });
+
+        // 3c. Global Leaderboard Realtime Sync
+        this.channel.on('broadcast', { event: 'leaderboard_update' }, ({ payload }) => {
+            if (payload) {
+                for (const cb of this.leaderboardCallbacks) {
+                    cb(payload);
+                }
+            }
+        });
+
+        this.channel.on('broadcast', { event: 'submit_score' }, ({ payload }) => {
+            if (payload && payload.username) {
+                for (const cb of this.scoreSubmitCallbacks) {
+                    cb(payload);
+                }
+            }
         });
 
         // 4. Fast Position Update
@@ -444,6 +506,22 @@ export class SupabaseRealtimeManager {
 
     subscribeAnnouncements(callback) {
         this.announcementCallbacks.push(callback);
+    }
+
+    subscribeLeaderboard(callback) {
+        this.leaderboardCallbacks.push(callback);
+    }
+
+    subscribeScoreSubmit(callback) {
+        this.scoreSubmitCallbacks.push(callback);
+    }
+
+    sendLeaderboardUpdate(leaderboardData) {
+        this.broadcast('leaderboard_update', leaderboardData);
+    }
+
+    sendScoreSubmit(scoreData) {
+        this.broadcast('submit_score', scoreData);
     }
 
     setUsername(newUsername) {

@@ -111,6 +111,8 @@ export class StatsScreen {
     async updateLeaderboard() {
         // Fetch latest global leaderboard data using the manager
         this.game.globalLeaderboardManager.leaderboardData = await this.game.globalLeaderboardManager.fetchGlobalLeaderboard();
+        const activeTab = this.totalKillsTab && this.totalKillsTab.classList.contains('active') ? 'totalKills' : 'bestKills';
+        this.showLeaderboard(activeTab);
     }
     
     showLeaderboard(type) {

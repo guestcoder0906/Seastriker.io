@@ -213,6 +213,13 @@ class NarwhaleGame {
                 this.players[clientId].kills = presence.kills;
             }
         }
+
+        // Clean up disconnected or dead players
+        for (const id in this.players) {
+            if (!this.playerPresences[id] || !this.playerPresences[id].isAlive) {
+                delete this.players[id];
+            }
+        }
     }
 
     interpolateRemotePlayers(deltaTime) {
