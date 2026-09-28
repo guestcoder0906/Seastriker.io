@@ -192,41 +192,69 @@ export class GameRenderer {
             }
         }
 
-        // 3. Draw horizontal seabed sand ripples / wave crests
-        ctx.globalAlpha = 0.22;
-        const rippleSpacing = 65;
-        for (let y = 15; y < CONFIG.WORLD_HEIGHT; y += rippleSpacing) {
-            ctx.beginPath();
-            ctx.moveTo(0, y);
+        // 3. Draw realistic, sparse seabed sand ripples with natural variations and transparency
+        ctx.globalAlpha = 0.10;
+        const rippleSpacing = 160;
+        for (let y = 30; y < CONFIG.WORLD_HEIGHT; y += rippleSpacing) {
+            // Random offset and varied segment spans for each ripple band
+            const yOffset = (Math.sin(y * 0.04) * 45) + ((y * 13) % 40) - 20;
+            const actualY = y + yOffset;
             
-            for (let x = 0; x <= CONFIG.WORLD_WIDTH; x += 40) {
-                const rippleY = y + Math.sin(x * 0.02 + y * 0.01) * 8 + Math.cos(x * 0.01) * 4;
-                ctx.lineTo(x, rippleY);
+            ctx.beginPath();
+            let started = false;
+            
+            for (let x = -20; x <= CONFIG.WORLD_WIDTH + 40; x += 55) {
+                // Natural wavy modulation with varied frequency
+                const curveY = actualY + Math.sin(x * 0.009 + y * 0.015) * 14 + Math.cos(x * 0.022) * 6;
+                
+                // Introduce occasional natural breaks in the ripple lines
+                const breakNoise = Math.sin(x * 0.03 + y * 0.05);
+                if (breakNoise < -0.65) {
+                    started = false;
+                    continue;
+                }
+                
+                if (!started) {
+                    ctx.moveTo(x, curveY);
+                    started = true;
+                } else {
+                    ctx.lineTo(x, curveY);
+                }
             }
             
-            ctx.strokeStyle = '#c09242'; // Darker sand shadow ripple
-            ctx.lineWidth = 3;
+            ctx.strokeStyle = '#9e732c'; // Soft transparent sand shadow
+            ctx.lineWidth = 2.0;
             ctx.stroke();
 
-            // Lighter sand crest highlight just above
+            // Soft highlight on the crest of the ripple
             ctx.beginPath();
-            ctx.moveTo(0, y - 2);
-            for (let x = 0; x <= CONFIG.WORLD_WIDTH; x += 40) {
-                const rippleY = (y - 2) + Math.sin(x * 0.02 + y * 0.01) * 8 + Math.cos(x * 0.01) * 4;
-                ctx.lineTo(x, rippleY);
+            started = false;
+            for (let x = -20; x <= CONFIG.WORLD_WIDTH + 40; x += 55) {
+                const curveY = (actualY - 2.5) + Math.sin(x * 0.009 + y * 0.015) * 14 + Math.cos(x * 0.022) * 6;
+                const breakNoise = Math.sin(x * 0.03 + y * 0.05);
+                if (breakNoise < -0.65) {
+                    started = false;
+                    continue;
+                }
+                if (!started) {
+                    ctx.moveTo(x, curveY);
+                    started = true;
+                } else {
+                    ctx.lineTo(x, curveY);
+                }
             }
-            ctx.strokeStyle = '#fff0c7';
-            ctx.lineWidth = 1.5;
+            ctx.strokeStyle = '#fff5d6'; // Soft pale sand highlight
+            ctx.lineWidth = 1.0;
             ctx.stroke();
         }
 
         // 4. Subtle sand grains and pebble flecks across seabed
-        ctx.globalAlpha = 0.25;
+        ctx.globalAlpha = 0.14;
         ctx.fillStyle = '#b38234';
-        for (let i = 0; i < 900; i++) {
+        for (let i = 0; i < 450; i++) {
             const rx = Math.random() * CONFIG.WORLD_WIDTH;
             const ry = Math.random() * CONFIG.WORLD_HEIGHT;
-            const size = 1 + Math.random() * 2.5;
+            const size = 1 + Math.random() * 2.0;
             ctx.beginPath();
             ctx.arc(rx, ry, size, 0, Math.PI * 2);
             ctx.fill();
@@ -256,47 +284,53 @@ export class GameRenderer {
         const fillW = Math.max(visibleMaxX + margin, CONFIG.WORLD_WIDTH + margin) - fillX;
         const fillH = Math.max(visibleMaxY + margin, CONFIG.WORLD_HEIGHT + margin) - fillY;
 
-        // 1. Rich blue ocean water overlay cast directly over ground, map items, and sea creatures
+        // 1. Rich translucent blue ocean water overlay cast directly over ground and creatures
         const waterGradient = ctx.createLinearGradient(0, 0, 0, CONFIG.WORLD_HEIGHT);
-        waterGradient.addColorStop(0, 'rgba(14, 135, 235, 0.36)');
-        waterGradient.addColorStop(0.5, 'rgba(10, 115, 215, 0.40)');
-        waterGradient.addColorStop(1, 'rgba(6, 85, 180, 0.48)');
+        waterGradient.addColorStop(0, 'rgba(14, 135, 235, 0.32)');
+        waterGradient.addColorStop(0.5, 'rgba(10, 115, 215, 0.36)');
+        waterGradient.addColorStop(1, 'rgba(6, 85, 180, 0.44)');
         
         ctx.fillStyle = waterGradient;
         ctx.fillRect(fillX, fillY, fillW, fillH);
 
-        // 2. Animated water caustic reflections & light ripples playing across creature bodies and seabed
-        const now = performance.now() * 0.001;
-        const tileSize = 160;
+        // 2. Realistic, gentle, sparse water caustics with varied positions and soft transparency
+        const now = performance.now() * 0.0006;
+        const tileSize = 280; // Significantly larger spacing -> fewer, more organic wave caustics
         const startX = Math.max(0, Math.floor(visibleMinX / tileSize) * tileSize);
         const endX = Math.min(CONFIG.WORLD_WIDTH, Math.ceil(visibleMaxX / tileSize) * tileSize + tileSize);
         const startY = Math.max(0, Math.floor(visibleMinY / tileSize) * tileSize);
         const endY = Math.min(CONFIG.WORLD_HEIGHT, Math.ceil(visibleMaxY / tileSize) * tileSize + tileSize);
 
-        // Caustic glow loops across the water volume
-        ctx.strokeStyle = 'rgba(180, 245, 255, 0.22)';
-        ctx.lineWidth = 3.5;
+        ctx.strokeStyle = 'rgba(195, 245, 255, 0.11)'; // Much softer and more transparent
+        ctx.lineWidth = 2.0;
         ctx.lineJoin = 'round';
         ctx.lineCap = 'round';
 
         for (let x = startX; x < endX; x += tileSize) {
             for (let y = startY; y < endY; y += tileSize) {
-                const off1 = Math.sin(x * 0.015 + now * 1.1) * 14 + Math.cos(y * 0.015 + now * 0.9) * 14;
-                const off2 = Math.cos(x * 0.018 - now * 0.8) * 12 + Math.sin(y * 0.018 + now * 1.2) * 12;
+                // Pseudo-random positional variation per wave cell
+                const seedX = Math.sin(x * 0.003 + y * 0.007);
+                const seedY = Math.cos(x * 0.007 + y * 0.003);
+                const posX = x + (seedX * 55) + 40;
+                const posY = y + (seedY * 55) + 40;
+
+                // Subtle undulation
+                const off1 = Math.sin(x * 0.008 + now * 1.2) * 18 + Math.cos(y * 0.008 + now * 0.8) * 18;
+                const off2 = Math.cos(x * 0.010 - now * 0.9) * 16 + Math.sin(y * 0.010 + now * 1.0) * 16;
 
                 ctx.beginPath();
-                ctx.moveTo(x + 20 + off1, y + 40 + off2);
+                ctx.moveTo(posX - 40 + off1, posY + 20 + off2);
                 ctx.bezierCurveTo(
-                    x + 70 + off2, y + 20 - off1,
-                    x + 110 - off1, y + 90 + off2,
-                    x + 140 + off2, y + 60 + off1
+                    posX + 20 + off2, posY - 30 - off1,
+                    posX + 80 - off1, posY + 60 + off2,
+                    posX + 150 + off2, posY + 10 + off1
                 );
                 ctx.stroke();
 
-                // Subtle caustic pool highlight
-                ctx.fillStyle = 'rgba(140, 230, 255, 0.09)';
+                // Gentle secondary caustic shimmer accent
+                ctx.fillStyle = 'rgba(150, 235, 255, 0.035)';
                 ctx.beginPath();
-                ctx.arc(x + 80 + off1, y + 80 + off2, 45, 0, Math.PI * 2);
+                ctx.arc(posX + 50 + off1, posY + 20 + off2, 55, 0, Math.PI * 2);
                 ctx.fill();
             }
         }
