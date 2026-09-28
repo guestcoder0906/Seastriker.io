@@ -30,12 +30,12 @@ export class StatsScreen {
         
         this.container.appendChild(personalStatsContainer);
         
-        // Create global leaderboard section
+        // Create leaderboard section
         const leaderboardContainer = document.createElement('div');
         leaderboardContainer.className = 'stats-section';
         
         const leaderboardHeader = document.createElement('h2');
-        leaderboardHeader.textContent = 'Global Leaderboard';
+        leaderboardHeader.textContent = 'Leaderboard';
         leaderboardHeader.className = 'centered-header';
         leaderboardContainer.appendChild(leaderboardHeader);
         

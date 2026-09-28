@@ -521,7 +521,7 @@ class NarwhaleGame {
             const isConn = this.room.supabase?.connectionStatus === 'connected';
             const statusDot = isConn ? '🟢' : '🟡';
             const pingStr = ping > 0 ? `${ping}ms` : 'Syncing';
-            hud.innerHTML = `<span>⚡ Supabase Multiplayer</span> <span style="opacity:0.5">•</span> <span style="color:#38bdf8">${roomName}</span> <span style="opacity:0.5">•</span> <span>👥 ${peerCount}</span> <span style="opacity:0.5">•</span> <span>${statusDot} ${pingStr}</span>`;
+            hud.innerHTML = `<span>⚡ Multiplayer</span> <span style="opacity:0.5">•</span> <span style="color:#38bdf8">${roomName}</span> <span style="opacity:0.5">•</span> <span>👥 ${peerCount}</span> <span style="opacity:0.5">•</span> <span>${statusDot} ${pingStr}</span>`;
         }
     }
 
