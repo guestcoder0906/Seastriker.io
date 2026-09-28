@@ -118,6 +118,10 @@ class NarwhaleGame {
         
         this.mobileControlsManager = new MobileControlsManager(this);
         
+        this.interpolatedPresences = {};
+        this._lastLeaderboardUpdate = 0;
+        this._lastHudUpdate = 0;
+        
         this.initialize();
     }
 
@@ -209,8 +213,113 @@ class NarwhaleGame {
                 this.players[clientId].kills = presence.kills;
             }
         }
+    }
 
-        this.updateLeaderboard();
+    interpolateRemotePlayers(deltaTime) {
+        if (!this.interpolatedPresences) {
+            this.interpolatedPresences = {};
+        }
+
+        const validIds = new Set();
+        // Frame-rate independent smoothing (gives ~0.3 lerp factor at 60fps)
+        const lerpFactor = Math.min(1.0, 1.0 - Math.exp(-24 * Math.min(deltaTime, 0.1)));
+
+        const lerpAngle = (cur, tgt, f) => {
+            if (cur === undefined) return tgt;
+            if (tgt === undefined) return cur;
+            let diff = (tgt - cur) % (Math.PI * 2);
+            if (diff > Math.PI) diff -= Math.PI * 2;
+            if (diff < -Math.PI) diff += Math.PI * 2;
+            return cur + diff * f;
+        };
+
+        for (const clientId in this.playerPresences) {
+            const target = this.playerPresences[clientId];
+            if (!target) continue;
+
+            validIds.add(clientId);
+
+            // Local player is always authoritatively current
+            if (clientId === this.room?.clientId || (this.creature && clientId === this.creature.id)) {
+                this.interpolatedPresences[clientId] = this.creature?.getPresenceData() || target;
+                continue;
+            }
+
+            // Local AI players run at full frame rate on the host
+            if (clientId.startsWith('ai-') && this.aiController?.aiPresences[clientId]) {
+                this.interpolatedPresences[clientId] = this.aiController.aiPresences[clientId];
+                continue;
+            }
+
+            // Remote real players: smooth interpolation between incoming network packets
+            if (!this.interpolatedPresences[clientId]) {
+                this.interpolatedPresences[clientId] = {
+                    ...target,
+                    segments: Array.isArray(target.segments) 
+                        ? target.segments.map(s => ({ ...s })) 
+                        : []
+                };
+            } else {
+                const current = this.interpolatedPresences[clientId];
+                
+                // Copy non-positional state
+                current.id = target.id || clientId;
+                current.name = target.name || current.name;
+                current.color = target.color || current.color;
+                current.type = target.type || current.type;
+                current.skinId = target.skinId || current.skinId;
+                current.isDashing = Boolean(target.isDashing);
+                current.isDodging = Boolean(target.isDodging);
+                current.isAlive = Boolean(target.isAlive);
+                current.kills = target.kills !== undefined ? target.kills : (current.kills || 0);
+                current.health = target.health !== undefined ? target.health : current.health;
+                current.isHiddenInReef = Boolean(target.isHiddenInReef);
+                current.isCamouflaged = Boolean(target.isCamouflaged);
+                current.camouflageActiveTimer = target.camouflageActiveTimer;
+                current.upgrades = target.upgrades || current.upgrades;
+
+                // Interpolate rotation angle
+                if (target.rotationAngle !== undefined) {
+                    current.rotationAngle = lerpAngle(current.rotationAngle ?? target.rotationAngle, target.rotationAngle, lerpFactor);
+                }
+
+                // Smoothly lerp segments
+                if (Array.isArray(target.segments) && target.segments.length > 0) {
+                    if (!Array.isArray(current.segments) || current.segments.length !== target.segments.length) {
+                        current.segments = target.segments.map(s => ({ ...s }));
+                    } else {
+                        const headDistSq = (target.segments[0].x - current.segments[0].x) ** 2 + 
+                                           (target.segments[0].y - current.segments[0].y) ** 2;
+                        
+                        if (headDistSq > 350 * 350) {
+                            // Snap immediately on large jump / spawn / teleport
+                            for (let i = 0; i < target.segments.length; i++) {
+                                current.segments[i].x = target.segments[i].x;
+                                current.segments[i].y = target.segments[i].y;
+                                current.segments[i].angle = target.segments[i].angle;
+                                current.segments[i].scale = target.segments[i].scale;
+                            }
+                        } else {
+                            for (let i = 0; i < target.segments.length; i++) {
+                                const tgtSeg = target.segments[i];
+                                const curSeg = current.segments[i];
+                                curSeg.x += (tgtSeg.x - curSeg.x) * lerpFactor;
+                                curSeg.y += (tgtSeg.y - curSeg.y) * lerpFactor;
+                                curSeg.angle = lerpAngle(curSeg.angle, tgtSeg.angle, lerpFactor);
+                                curSeg.scale = tgtSeg.scale;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Clean up disconnected players
+        for (const id in this.interpolatedPresences) {
+            if (!validIds.has(id)) {
+                delete this.interpolatedPresences[id];
+            }
+        }
     }
 
     gameLoop(timestamp) {
@@ -230,6 +339,10 @@ class NarwhaleGame {
     }
 
     update(deltaTime) {
+        // Smoothly interpolate remote players between network updates
+        this.interpolateRemotePlayers(deltaTime);
+        const activePresences = this.interpolatedPresences || this.playerPresences;
+
         if (this.usernameDisplay) {
             this.usernameDisplay.updateCreatureNames();
         }
@@ -267,13 +380,16 @@ class NarwhaleGame {
                 this.mouse.pressed, 
                 isDodgePressed, 
                 isFastSwimPressed, 
-                this.playerPresences
+                activePresences
             );
             
             this.updateCamera();
             
             // Keep local player presence current for AI targeting and collision detection
             this.playerPresences[this.room.clientId] = this.creature.getPresenceData();
+            if (this.interpolatedPresences) {
+                this.interpolatedPresences[this.room.clientId] = this.creature.getPresenceData();
+            }
             
             this.playerController.checkCollisions();
             
@@ -329,8 +445,16 @@ class NarwhaleGame {
         
         this.updateBubbles(deltaTime);
         
-        this.updateLeaderboard();
-        this.updateGameModeHud();
+        // Throttle DOM updates to avoid GC pauses and frame stutters
+        const now = performance.now();
+        if (now - this._lastLeaderboardUpdate > 250) {
+            this._lastLeaderboardUpdate = now;
+            this.updateLeaderboard();
+        }
+        if (now - this._lastHudUpdate > 250) {
+            this._lastHudUpdate = now;
+            this.updateGameModeHud();
+        }
     }
 
     updateGameModeHud() {
@@ -398,7 +522,8 @@ class NarwhaleGame {
     render() {
         this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
         
-        this.renderer.render(this.ctx, this.camera, this.playerPresences, this.creature, this.bubbles);
+        const presencesToRender = this.interpolatedPresences || this.playerPresences;
+        this.renderer.render(this.ctx, this.camera, presencesToRender, this.creature, this.bubbles);
         
         if (this.gameActive && this.creature && this.creature.isInked) {
             this.inkSystem.drawInkEffect(this.ctx);

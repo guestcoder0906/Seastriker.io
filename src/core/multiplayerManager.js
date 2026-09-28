@@ -10,6 +10,8 @@ export class MultiplayerManager {
         this.socket = null;
         this.channel = null;
         this._isServerConnected = false;
+        this._lastLocalBroadcast = 0;
+        this._lastSocketBroadcast = 0;
         
         this.peers = { ...this.supabase.peers };
         this.localPresences = {};
@@ -95,6 +97,11 @@ export class MultiplayerManager {
                     this.notifyPresence();
                 } else if (msg.type === 'presence' && msg.clientId && msg.data) {
                     if (msg.clientId !== this.clientId) {
+                        const existing = this.localPresences[msg.clientId];
+                        if (existing && existing.t && msg.t && msg.t < existing.t) {
+                            return; // drop out-of-order packet
+                        }
+                        if (msg.t) msg.data.t = msg.t;
                         this.localPresences[msg.clientId] = msg.data;
                         if (msg.data.name && !this.peers[msg.clientId]) {
                             this.peers[msg.clientId] = { id: msg.clientId, username: msg.data.name };
@@ -295,20 +302,25 @@ export class MultiplayerManager {
         this.localPresences[this.clientId] = data;
 
         if (this.gameMode === 'multiplayer') {
+            const now = performance.now();
+
             // 1. Supabase Realtime (global internet multiplayer)
             this.supabase.sendPresenceUpdate(data);
 
-            // 2. BroadcastChannel (instant cross-tab sync on same machine / Vercel)
-            if (this.channel) {
+            // 2. BroadcastChannel (instant cross-tab sync on same machine / Vercel, throttled to 30ms to prevent browser event queue overload)
+            if (this.channel && now - this._lastLocalBroadcast >= 30) {
+                this._lastLocalBroadcast = now;
                 this.channel.postMessage({
                     type: 'presence',
                     clientId: this.clientId,
-                    data
+                    data,
+                    t: now
                 });
             }
 
-            // 3. Socket.IO (local server if connected)
-            if (this.socket && this.socket.connected) {
+            // 3. Socket.IO (local server if connected, throttled to 30ms)
+            if (this.socket && this.socket.connected && now - this._lastSocketBroadcast >= 30) {
+                this._lastSocketBroadcast = now;
                 this.socket.emit('updatePresence', data);
             }
         } else {

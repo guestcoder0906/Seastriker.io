@@ -22,7 +22,7 @@ export class SupabaseRealtimeManager {
         this.remotePresences = {};
         this.localPresence = null;
         this.lastBroadcastTime = 0;
-        this.broadcastThrottleMs = 45; // ~22 fps smooth movement without hitting rate limits
+        this.broadcastThrottleMs = 33; // ~30 fps smooth low-latency updates
         
         this.pingMs = 0;
         this.lastPingSent = 0;
@@ -128,7 +128,7 @@ export class SupabaseRealtimeManager {
             this.client = createClient(creds.url, creds.key, {
                 realtime: {
                     params: {
-                        eventsPerSecond: 25
+                        eventsPerSecond: 50
                     }
                 }
             });
@@ -254,6 +254,10 @@ export class SupabaseRealtimeManager {
         // 4. Fast Position Update
         this.channel.on('broadcast', { event: 'pos' }, ({ payload }) => {
             if (!payload || !payload.id || payload.id === this.clientId) return;
+            const existing = this.remotePresences[payload.id];
+            if (existing && existing.t && payload.t && payload.t < existing.t) {
+                return; // Drop out-of-order delayed packet
+            }
             this.remotePresences[payload.id] = payload;
             if (payload.name && !this.peers[payload.id]) {
                 this.peers[payload.id] = { id: payload.id, username: payload.name };
@@ -378,7 +382,8 @@ export class SupabaseRealtimeManager {
                 type: presenceData.type,
                 skinId: presenceData.skinId,
                 isHiddenInReef: presenceData.isHiddenInReef,
-                rotationAngle: presenceData.rotationAngle
+                rotationAngle: presenceData.rotationAngle,
+                t: now
             };
 
             this.broadcast('pos', compactPayload);
