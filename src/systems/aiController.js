@@ -646,7 +646,9 @@ export class AIController {
             const hitDistance = (CONFIG.SEGMENT_SIZE * 1.5) * (head.scale || 1.0);
 
             if (dist < hitDistance) {
-                const damage = squid.isDashing ? 35 : (CONFIG.SQUID_TENTACLE_DAMAGE || 25);
+                const isOctopus = squid.skinId === 'octopus';
+                const baseDamage = isOctopus ? (CONFIG.OCTOPUS_HEAD_DAMAGE || 15) : (CONFIG.SQUID_TENTACLE_DAMAGE || 18);
+                const damage = squid.isDashing ? Math.round(baseDamage * 1.35) : baseDamage;
                 return {
                     clientId: clientId,
                     type: squid.isDashing ? 'lethal' : 'headHit',

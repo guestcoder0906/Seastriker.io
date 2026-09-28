@@ -133,13 +133,13 @@ export const CONFIG = {
     SQUID_INK_DURATION: 5000,      // 5 seconds ink cloud duration (ms)
     SQUID_INK_RADIUS: 100,         // Radius of ink cloud
     SQUID_INK_EFFECT_DURATION: 4000, // Duration of ink effect on players (ms)
-    SQUID_TENTACLE_DAMAGE: 25,     // Increased to punchier damage per hit (up from 18)
+    SQUID_TENTACLE_DAMAGE: 18,     // Lowered squid attack damage per hit (down from 25)
 
     // Octopus settings
     OCTOPUS_SIZE_MULTIPLIER: 0.82,     // Octopus a bit smaller (lowered from 1.1)
     OCTOPUS_TENTACLE_LENGTH: 3.0,      // Octopus has longer tentacles
     OCTOPUS_TENTACLE_COUNT: 8,         // Octopus has 8 tentacles
-    OCTOPUS_HEAD_DAMAGE: 20,           // Increased octopus attack damage (up from 14)
+    OCTOPUS_HEAD_DAMAGE: 15,           // Lowered octopus attack damage (down from 20)
     OCTOPUS_AI_CHANCE: 0.3,            // 30% chance for AI squids to be octopus
     OCTOPUS_CAMOUFLAGE_DURATION: 3000, // 3 seconds of camouflage
     OCTOPUS_CAMOUFLAGE_COOLDOWN: 5000, // 5 seconds cooldown

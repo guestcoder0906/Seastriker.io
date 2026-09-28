@@ -153,7 +153,7 @@ calculateTentacleHitbox(squid) {
             damageAmount *= squid.tentacleDamageModifier;
         }
         if (squid.skinId === 'octopus') {
-            damageAmount = CONFIG.OCTOPUS_HEAD_DAMAGE || 20;
+            damageAmount = CONFIG.OCTOPUS_HEAD_DAMAGE || 15;
         }
         
         const tickInterval = 600; // Balanced interval between damage ticks

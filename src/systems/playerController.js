@@ -399,7 +399,7 @@ export class PlayerController {
                 this.recentCollisions[clientId] = now;
                 const isAITarget = clientId.startsWith('ai-');
                 const isOctopus = squid.skinId === 'octopus';
-                const baseDamage = isOctopus ? (CONFIG.OCTOPUS_HEAD_DAMAGE || 20) : (CONFIG.SQUID_TENTACLE_DAMAGE || 25);
+                const baseDamage = isOctopus ? (CONFIG.OCTOPUS_HEAD_DAMAGE || 15) : (CONFIG.SQUID_TENTACLE_DAMAGE || 18);
                 const damage = squid.isDashing ? Math.round(baseDamage * 1.25) : baseDamage;
 
                 if (isAITarget) {
