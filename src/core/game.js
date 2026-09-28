@@ -420,13 +420,28 @@ class NarwhaleGame {
             const isDodgePressed = !!(this.keys[' '] || this.keys['Space'] || this.keys['Spacebar'] || this.mobileControls?.dodgeActive);
             const isFastSwimPressed = !!(this.keys['Shift'] || this.mobileControls?.fastSwimActive);
             
+            // Check if mouse is moving or if active burst action is triggered
+            const now = performance.now();
+            const lastMove = this.playerInput?.mouse?.lastMoveTime || now;
+            const isMouseMoving = (now - lastMove) < 140;
+            const isActionActive = this.mouse.pressed || isDodgePressed || isFastSwimPressed || (this.mobileControls?.joystick?.active);
+            
+            if (isMouseMoving || isActionActive) {
+                // Smooth, responsive acceleration when moving mouse or executing action
+                this.playerMotionFactor = Math.min(1.0, (this.playerMotionFactor || 0) + 0.14);
+            } else {
+                // Mouse is not moving: gradually gets slower, then stops swimming completely (~0.85s)
+                this.playerMotionFactor = Math.max(0, (this.playerMotionFactor || 0) - 0.02);
+            }
+            
             this.creature.update(
                 targetX, 
                 targetY, 
                 this.mouse.pressed, 
                 isDodgePressed, 
                 isFastSwimPressed, 
-                activePresences
+                activePresences,
+                this.playerMotionFactor
             );
             
             this.updateCamera();

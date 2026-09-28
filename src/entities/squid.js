@@ -119,7 +119,7 @@ export class Squid extends Creature {
         }
     }
 
-    update(targetX, targetY, mousePressed, dodgePressed, fastSwimPressed, playerPresences) {
+    update(targetX, targetY, mousePressed, dodgePressed, fastSwimPressed, playerPresences, speedFactor = 1.0) {
         if (!this.isAlive) return;
 
         // Store previous head position
@@ -168,11 +168,38 @@ export class Squid extends Creature {
         // Update time for animations
         this.segments[0].lastUpdateTime = Date.now();
 
-        // Compute desired angle towards target
+        // Distance-based speed calculation:
+        // Smaller closeness threshold (10px) to stay still
+        // Middle distance (~130px): base speed is original middle speed (1.0x)
+        // Further mouse spot (> 130px up to 280px): swims a bit faster (up to ~1.20x)
         const dx = targetX - this.segments[0].x;
         const dy = targetY - this.segments[0].y;
         const dist = Math.hypot(dx, dy);
-        if (dist > 12) {
+
+        const closeThreshold = 10;
+        const midDist = 130;
+        const farDist = 280;
+        const farBonus = 0.20; // a bit faster when mouse is further out
+
+        let distFactor = 0;
+        if (dist > closeThreshold) {
+            if (dist <= midDist) {
+                // Scales smoothly from 0 at closeThreshold up to 1.0 at midDist (middle original speed)
+                distFactor = (dist - closeThreshold) / (midDist - closeThreshold);
+            } else {
+                // Further mouse spot swims a bit faster (up to 1.20x)
+                const farProgress = Math.min(1.0, (dist - midDist) / (farDist - midDist));
+                distFactor = 1.0 + farProgress * farBonus;
+            }
+        }
+
+        const controlledFactor = (typeof speedFactor === 'number' && Number.isFinite(speedFactor))
+            ? Math.max(0, Math.min(1.0, speedFactor))
+            : 1.0;
+        const effectiveFactor = distFactor * controlledFactor;
+
+        // Compute desired angle towards target only when target is beyond close threshold or active action is pressed
+        if (dist > 12 && (effectiveFactor > 0.02 || mousePressed || dodgePressed || fastSwimPressed)) {
             const desiredAngle = Math.atan2(dy, dx);
             const isOctopus = this.skinId === 'octopus';
             const steerSpeed = isOctopus ? 0.10 : 0.085;
@@ -219,11 +246,14 @@ export class Squid extends Creature {
             }, CONFIG.SQUID_DODGE_DURATION);
         }
 
-        let currentSpeed = this.speed;
+        // Determine current speed:
+        // Base swimming scales with distance/motion.
+        // Fast swimming (holding shift) swims at the exact fast swimming speed as before!
+        let currentSpeed = this.speed * effectiveFactor;
         if (this.isDashing) {
             currentSpeed = this.speed * CONFIG.DASH_MULTIPLIER;
         } else if (this.isFastSwimming) {
-            currentSpeed = this.speed * (CONFIG.FAST_SWIM_MULTIPLIER || 1.65);
+            currentSpeed = this.speed * (CONFIG.FAST_SWIM_MULTIPLIER || 1.45);
         }
         
         let moveX = Math.cos(this.movementAngle) * currentSpeed;
@@ -233,6 +263,10 @@ export class Squid extends Creature {
         if (!this.isDodging) {
             this.velocity.x = this.velocity.x * 0.80 + moveX * 0.20;
             this.velocity.y = this.velocity.y * 0.80 + moveY * 0.20;
+            if (Math.hypot(this.velocity.x, this.velocity.y) < 0.03) {
+                this.velocity.x = 0;
+                this.velocity.y = 0;
+            }
         } else {
             this.velocity.x *= 0.98;
             this.velocity.y *= 0.98;

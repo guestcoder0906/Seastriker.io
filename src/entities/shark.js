@@ -53,7 +53,7 @@ export class Shark extends Creature {
         }
     }
 
-    update(targetX, targetY, mousePressed, dodgePressed, fastSwimPressed, playerPresences) { 
+    update(targetX, targetY, mousePressed, dodgePressed, fastSwimPressed, playerPresences, speedFactor = 1.0) {
         if (!this.isAlive) return;
 
         // Update cooldowns
@@ -93,11 +93,38 @@ export class Shark extends Creature {
         const burstCost = CONFIG.BURST_STAMINA_COST || 0.5;
         const canBurst = this.stamina > burstMin;
 
-        // Compute desired angle based on the target with deadzone
+        // Distance-based speed calculation:
+        // Smaller closeness threshold (10px) to stay still
+        // Middle distance (~130px): base speed is original middle speed (1.0x)
+        // Further mouse spot (> 130px up to 280px): swims a bit faster (up to ~1.20x)
         const dx = targetX - this.segments[0].x;
         const dy = targetY - this.segments[0].y;
         const dist = Math.hypot(dx, dy);
-        if (dist > 12) {
+
+        const closeThreshold = 10;
+        const midDist = 130;
+        const farDist = 280;
+        const farBonus = 0.20; // a bit faster when mouse is further out
+
+        let distFactor = 0;
+        if (dist > closeThreshold) {
+            if (dist <= midDist) {
+                // Scales smoothly from 0 at closeThreshold up to 1.0 at midDist (middle original speed)
+                distFactor = (dist - closeThreshold) / (midDist - closeThreshold);
+            } else {
+                // Further mouse spot swims a bit faster (up to 1.20x)
+                const farProgress = Math.min(1.0, (dist - midDist) / (farDist - midDist));
+                distFactor = 1.0 + farProgress * farBonus;
+            }
+        }
+
+        const controlledFactor = (typeof speedFactor === 'number' && Number.isFinite(speedFactor))
+            ? Math.max(0, Math.min(1.0, speedFactor))
+            : 1.0;
+        const effectiveFactor = distFactor * controlledFactor;
+
+        // Turn towards target: steer if beyond close threshold or active action is pressed
+        if (dist > 12 && (effectiveFactor > 0.02 || mousePressed || dodgePressed || fastSwimPressed)) {
             const desiredAngle = Math.atan2(dy, dx);
             this.rotationAngle = this.lerpAngle(this.rotationAngle, desiredAngle, 0.085);
         }
@@ -122,26 +149,33 @@ export class Shark extends Creature {
             }, CONFIG.DASH_DURATION);
         }
 
-        // Determine current speed and movement
-        let currentSpeed = this.speed;
+        // Determine current speed:
+        // Base swimming scales with distance/motion.
+        // Fast swimming (holding shift) swims at the exact fast swimming speed as before!
+        let currentSpeed = this.speed * effectiveFactor;
         if (this.isDashing) {
             currentSpeed = this.speed * CONFIG.DASH_MULTIPLIER;
         } else if (this.isFastSwimming) {
-            currentSpeed = this.speed * (CONFIG.FAST_SWIM_MULTIPLIER || 1.65);
+            currentSpeed = this.speed * (CONFIG.FAST_SWIM_MULTIPLIER || 1.45);
         }
         
         let moveX = Math.cos(this.movementAngle) * currentSpeed;
         let moveY = Math.sin(this.movementAngle) * currentSpeed;
         
-        // Apply normal movement
+        // Apply normal movement with smooth friction deceleration
         this.velocity.x = this.velocity.x * 0.85 + moveX * 0.15;
         this.velocity.y = this.velocity.y * 0.85 + moveY * 0.15;
+        if (Math.hypot(this.velocity.x, this.velocity.y) < 0.03) {
+            this.velocity.x = 0;
+            this.velocity.y = 0;
+        }
         
-        // Clamp velocity
-        const mag = Math.sqrt(this.velocity.x ** 2 + this.velocity.y ** 2);
-        if (mag > currentSpeed) {
-            this.velocity.x = (this.velocity.x / mag) * currentSpeed;
-            this.velocity.y = (this.velocity.y / mag) * currentSpeed;
+        // Clamp velocity to active maximum speed limit
+        const mag = Math.hypot(this.velocity.x, this.velocity.y);
+        const maxAllowed = Math.max(currentSpeed, this.speed * (this.isDashing ? CONFIG.DASH_MULTIPLIER : (this.isFastSwimming ? (CONFIG.FAST_SWIM_MULTIPLIER || 1.45) : 1.25)));
+        if (mag > maxAllowed && maxAllowed > 0.01) {
+            this.velocity.x = (this.velocity.x / mag) * maxAllowed;
+            this.velocity.y = (this.velocity.y / mag) * maxAllowed;
         }
         
         // Update head position

@@ -4,15 +4,29 @@ export class PlayerInput {
     constructor(game) {
         this.game = game;
         this.keys = {};
-        this.mouse = { x: 0, y: 0, pressed: false };
+        this.mouse = {
+            x: 0, 
+            y: 0, 
+            pressed: false,
+            lastMoveTime: performance.now(),
+            isMoving: false
+        };
         this.setupEventListeners();
     }
     
     setupEventListeners() {
-        // Mouse movement
+        // Mouse movement with motion tracking
         this.game.canvas.addEventListener('mousemove', (event) => {
+            const dx = event.clientX - this.mouse.x;
+            const dy = event.clientY - this.mouse.y;
             this.mouse.x = event.clientX;
             this.mouse.y = event.clientY;
+            
+            // Only update motion time if mouse actually moved beyond subpixel jitter
+            if (dx * dx + dy * dy > 0.5) {
+                this.mouse.lastMoveTime = performance.now();
+                this.mouse.isMoving = true;
+            }
         });
         
         // Mouse buttons

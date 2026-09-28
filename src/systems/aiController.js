@@ -117,6 +117,9 @@ export class AIController {
             targetY: targetY,
             mousePressed: false,
             dodgePressed: false,
+            speedFactor: 1.0,
+            targetSpeedFactor: 1.0,
+            speedMode: 'normal',
             lastStateChange: performance.now(),
             lastTargetChange: performance.now(),
             sightRange: CONFIG.AI_SIGHT_RANGE
@@ -127,7 +130,8 @@ export class AIController {
             targetSelection: 0,
             stateChange: 0,
             dodge: 0,
-            dash: 0
+            dash: 0,
+            speedControl: 0
         };
         
         // Store initial presence data
@@ -191,14 +195,23 @@ export class AIController {
         // AI Decision Making
         this.updateAIDecision(ai, aiId);
         
-        // Update AI movement and actions
+        // Smoothly adjust AI speed factor
+        ai.speedFactor = (ai.speedFactor !== undefined ? ai.speedFactor : 1.0);
+        ai.targetSpeedFactor = (ai.targetSpeedFactor !== undefined ? ai.targetSpeedFactor : 1.0);
+        ai.speedFactor += (ai.targetSpeedFactor - ai.speedFactor) * 0.06;
+        if (Math.abs(ai.speedFactor - ai.targetSpeedFactor) < 0.01) {
+            ai.speedFactor = ai.targetSpeedFactor;
+        }
+
+        // Update AI movement and actions with dynamic speedFactor
         ai.creature.update(
             ai.targetX,
             ai.targetY,
             ai.mousePressed,
             ai.dodgePressed,
             ai.fastSwimPressed || false,
-            this.game.playerPresences
+            this.game.playerPresences,
+            ai.speedFactor
         );
         
         // Update presence data for this AI and store it in our reliable AI presence cache
@@ -276,6 +289,7 @@ export class AIController {
                     if (attackPosition) {
                         ai.targetX = attackPosition.x;
                         ai.targetY = attackPosition.y;
+                        ai.targetSpeedFactor = 1.0;
                         
                         // Decide to dash based on new aggression logic
                         const hasStaminaForBurst = ai.creature.stamina !== undefined ? ai.creature.stamina > (2 / 3) : ai.creature.staminaReady;
@@ -331,6 +345,35 @@ export class AIController {
         
         // Movement for exploration
         if (ai.state === 'exploring') {
+            // Dynamically control speed: AI can choose to stay still, go slower, or go normal/faster
+            if (!this.decisionCooldowns[aiId].speedControl || this.decisionCooldowns[aiId].speedControl <= 0) {
+                const roll = Math.random();
+                const isOctopus = ai.creature.skinId === 'octopus';
+                const isCamouflaged = Boolean(ai.creature.isCamouflaged);
+
+                if (isOctopus && isCamouflaged) {
+                    // Camouflaged octopus excels at staying still in ambush
+                    ai.targetSpeedFactor = 0.0;
+                    ai.speedMode = 'still';
+                    this.decisionCooldowns[aiId].speedControl = 120; // 2 seconds still
+                } else if (roll < 0.22) {
+                    // 22% chance: stay completely still (resting / waiting in ambush / drifting)
+                    ai.targetSpeedFactor = 0.0;
+                    ai.speedMode = 'still';
+                    this.decisionCooldowns[aiId].speedControl = 60 + Math.floor(Math.random() * 80); // 1-2.3s
+                } else if (roll < 0.55) {
+                    // 33% chance: swim slowly (cautious stalking / prowling)
+                    ai.targetSpeedFactor = 0.35 + Math.random() * 0.25; // 0.35 - 0.60
+                    ai.speedMode = 'slow';
+                    this.decisionCooldowns[aiId].speedControl = 90 + Math.floor(Math.random() * 120);
+                } else {
+                    // 45% chance: cruise normally
+                    ai.targetSpeedFactor = 0.85 + Math.random() * 0.15; // 0.85 - 1.0
+                    ai.speedMode = 'normal';
+                    this.decisionCooldowns[aiId].speedControl = 120 + Math.floor(Math.random() * 140);
+                }
+            }
+
             // Check if we've reached the target or are near world boundaries
             const dx = ai.targetX - ai.creature.segments[0].x;
             const dy = ai.targetY - ai.creature.segments[0].y;
@@ -338,6 +381,10 @@ export class AIController {
             
             if (distanceToTarget < 50 || this.isNearWorldBoundary(ai.creature)) {
                 this.setRandomExplorationTarget(ai);
+                // When picking a new exploration target, resume movement
+                if (ai.targetSpeedFactor < 0.3) {
+                    ai.targetSpeedFactor = 0.7 + Math.random() * 0.3;
+                }
             }
             
             // Higher chance to use dash while exploring for more dynamic movement

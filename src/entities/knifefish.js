@@ -50,7 +50,7 @@ export class KnifeFish extends Creature {
         }
     }
 
-    update(targetX, targetY, mousePressed, dodgePressed, fastSwimPressed, playerPresences) {
+    update(targetX, targetY, mousePressed, dodgePressed, fastSwimPressed, playerPresences, speedFactor = 1.0) {
         if (!this.isAlive) return;
 
         // Update cooldowns
@@ -89,11 +89,38 @@ export class KnifeFish extends Creature {
         const burstCost = CONFIG.BURST_STAMINA_COST || 0.5;
         const canBurst = this.stamina > burstMin;
 
-        // Compute desired angle based on the target
+        // Distance-based speed calculation:
+        // Smaller closeness threshold (10px) to stay still
+        // Middle distance (~130px): base speed is original middle speed (1.0x)
+        // Further mouse spot (> 130px up to 280px): swims a bit faster (up to ~1.20x)
         const dx = targetX - this.segments[0].x;
         const dy = targetY - this.segments[0].y;
         const dist = Math.hypot(dx, dy);
-        if (dist > 12) {
+
+        const closeThreshold = 10;
+        const midDist = 130;
+        const farDist = 280;
+        const farBonus = 0.20; // a bit faster when mouse is further out
+
+        let distFactor = 0;
+        if (dist > closeThreshold) {
+            if (dist <= midDist) {
+                // Scales smoothly from 0 at closeThreshold up to 1.0 at midDist (middle original speed)
+                distFactor = (dist - closeThreshold) / (midDist - closeThreshold);
+            } else {
+                // Further mouse spot swims a bit faster (up to 1.20x)
+                const farProgress = Math.min(1.0, (dist - midDist) / (farDist - midDist));
+                distFactor = 1.0 + farProgress * farBonus;
+            }
+        }
+
+        const controlledFactor = (typeof speedFactor === 'number' && Number.isFinite(speedFactor))
+            ? Math.max(0, Math.min(1.0, speedFactor))
+            : 1.0;
+        const effectiveFactor = distFactor * controlledFactor;
+
+        // Compute desired angle based on the target only when target is beyond close threshold or active action is pressed
+        if (dist > 12 && (effectiveFactor > 0.02 || mousePressed || dodgePressed || fastSwimPressed)) {
             const desiredAngle = Math.atan2(dy, dx);
             this.rotationAngle = this.lerpAngle(this.rotationAngle, desiredAngle, 0.095);
         }
@@ -134,7 +161,10 @@ export class KnifeFish extends Creature {
             }, CONFIG.KNIFEFISH_DODGE_DURATION);
         }
 
-        let currentSpeed = this.speed;
+        // Determine current speed:
+        // Base swimming scales with distance/motion.
+        // Fast swimming (holding shift) swims at the exact fast swimming speed as before!
+        let currentSpeed = this.speed * effectiveFactor;
         let moveX = 0;
         let moveY = 0;
         
@@ -143,7 +173,7 @@ export class KnifeFish extends Creature {
             moveX = Math.cos(this.movementAngle) * currentSpeed;
             moveY = Math.sin(this.movementAngle) * currentSpeed;
         } else if (this.isFastSwimming) {
-            currentSpeed = this.speed * (CONFIG.FAST_SWIM_MULTIPLIER || 1.65);
+            currentSpeed = this.speed * (CONFIG.FAST_SWIM_MULTIPLIER || 1.45);
             moveX = Math.cos(this.movementAngle) * currentSpeed;
             moveY = Math.sin(this.movementAngle) * currentSpeed;
         } else if (this.isDodging) {
@@ -160,6 +190,10 @@ export class KnifeFish extends Creature {
             // Update velocity with a responsive blend.
             this.velocity.x = this.velocity.x * 0.8 + moveX * 0.2;
             this.velocity.y = this.velocity.y * 0.8 + moveY * 0.2;
+            if (Math.hypot(this.velocity.x, this.velocity.y) < 0.03) {
+                this.velocity.x = 0;
+                this.velocity.y = 0;
+            }
         } else {
             // During dodge, gradually slow down
             this.velocity.x *= 0.98;
