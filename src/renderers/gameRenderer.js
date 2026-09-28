@@ -124,18 +124,19 @@ export class GameRenderer {
             this.game.inkSystem.drawInkClouds(ctx);
         }
         
-        // Draw other players (skip local player)
+        // Draw other players (skip local player and any dead players)
         for (const clientId in playerPresences) {
             if (clientId === this.game.room?.clientId || (narwhal && clientId === narwhal.id)) {
                 continue;
             }
-            if (playerPresences[clientId] && playerPresences[clientId].isAlive) {
-                this.drawCreatureByType(ctx, playerPresences[clientId]);
+            const presence = playerPresences[clientId];
+            if (presence && presence.isAlive !== false && (typeof presence.health !== 'number' || presence.health > 0) && presence.segments && presence.segments.length > 0) {
+                this.drawCreatureByType(ctx, presence);
             }
         }
         
-        // Draw local player if it exists
-        if (narwhal && narwhal.isAlive) {
+        // Draw local player if it exists and is alive
+        if (this.game.gameActive && narwhal && narwhal.isAlive && (typeof narwhal.health !== 'number' || narwhal.health > 0)) {
             this.drawCreatureByType(ctx, narwhal, true);
         }
         
@@ -243,7 +244,7 @@ export class GameRenderer {
     }
 
     drawCreatureByType(ctx, creature, isLocalPlayer = false) {
-        if (!creature || !creature.segments || !Array.isArray(creature.segments) || creature.segments.length === 0 || !creature.segments[0]) {
+        if (!creature || creature.isAlive === false || (typeof creature.health === 'number' && creature.health <= 0) || !creature.segments || !Array.isArray(creature.segments) || creature.segments.length === 0 || !creature.segments[0]) {
             return;
         }
 

@@ -37,6 +37,18 @@ export class AIHealthSystem {
                 delete narwhal._originalTentacleSpeed;
             }
 
+            const aiId = narwhal.id;
+
+            // Immediately remove AI presence so the dead creature is removed from the map
+            delete this.game.playerPresences[aiId];
+            delete this.game.aiController.aiPresences[aiId];
+            if (this.game.interpolatedPresences) {
+                delete this.game.interpolatedPresences[aiId];
+            }
+            if (this.game.players) {
+                delete this.game.players[aiId];
+            }
+
             // Handle attacker kill count increment if attacker is an AI or remote player
             if (attackerClientId) {
                 if (attackerClientId.startsWith('ai-')) {
@@ -56,13 +68,6 @@ export class AIHealthSystem {
                         });
                     }
                 }
-            }
-
-            // Update AI presence immediately
-            const aiId = narwhal.id;
-            if (this.game.aiController.aiPresences[aiId]) {
-                this.game.aiController.aiPresences[aiId] = narwhal.getPresenceData();
-                this.game.playerPresences[aiId] = this.game.aiController.aiPresences[aiId];
             }
 
             // Respawn after delay

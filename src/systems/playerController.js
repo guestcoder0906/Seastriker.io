@@ -25,6 +25,10 @@ export class PlayerController {
                 this.game.creature.velocity.y += Math.sin(updateRequest.knockbackAngle) * updateRequest.knockbackForce;
             }
 
+            const victimId = this.game.creature.id;
+            const victimName = this.game.creature.name || "Player";
+            const victimUpgrades = this.game.creature.upgrades;
+
             const isDead = this.game.healthSystem.processDamage(
                 hitType, 
                 damageAmount,
@@ -32,19 +36,17 @@ export class PlayerController {
             );
             
             if (isDead && fromClientId) {
-                const killToken = `${fromClientId}_${this.game.creature.id}_${Date.now()}`;
+                const killToken = `${fromClientId}_${victimId}_${Date.now()}`;
                 if (this.game.room && typeof this.game.room.requestPresenceUpdate === 'function') {
                     this.game.room.requestPresenceUpdate(fromClientId, {
                         type: 'incrementKills',
                         killToken,
-                        victimId: this.game.creature.id,
-                        victimName: this.game.creature.name || "Player",
-                        killedUpgrades: this.game.creature.upgrades
+                        victimId: victimId,
+                        victimName: victimName,
+                        killedUpgrades: victimUpgrades
                     });
                 }
-            }
-            
-            if (this.game.room) {
+            } else if (!isDead && this.game.creature && this.game.creature.isAlive && this.game.room) {
                 this.game.room.updatePresence({
                     ...this.game.creature.getPresenceData(),
                     velocity: this.game.creature.velocity
@@ -79,6 +81,10 @@ export class PlayerController {
         }
         else if (updateRequest.type === 'tentacleHit') {
             const damageAmount = updateRequest.damageAmount || 0;
+            const victimId = this.game.creature.id;
+            const victimName = this.game.creature.name || "Player";
+            const victimUpgrades = this.game.creature.upgrades;
+
             const isDead = this.game.healthSystem.processDamage(
                 updateRequest.hitType || 'tentacleHit', 
                 damageAmount,
@@ -86,19 +92,19 @@ export class PlayerController {
             );
 
             if (isDead && fromClientId) {
-                const killToken = `${fromClientId}_${this.game.creature.id}_${Date.now()}`;
+                const killToken = `${fromClientId}_${victimId}_${Date.now()}`;
                 if (this.game.room && typeof this.game.room.requestPresenceUpdate === 'function') {
                     this.game.room.requestPresenceUpdate(fromClientId, {
                         type: 'incrementKills',
                         killToken,
-                        victimId: this.game.creature.id,
-                        victimName: this.game.creature.name || "Player",
-                        killedUpgrades: this.game.creature.upgrades
+                        victimId: victimId,
+                        victimName: victimName,
+                        killedUpgrades: victimUpgrades
                     });
                 }
             }
             
-            if (!this.game.creature._tentacleSlowed) {
+            if (!isDead && this.game.creature && !this.game.creature._tentacleSlowed) {
                 this.game.creature._originalTentacleSpeed = this.game.creature.speed;
                 this.game.creature.speed = this.game.creature._originalTentacleSpeed * (updateRequest.speedReduction || 0.5);
                 this.game.creature._tentacleSlowed = true;

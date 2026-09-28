@@ -245,19 +245,35 @@ class NarwhaleGame {
 
         for (const clientId in this.playerPresences) {
             const target = this.playerPresences[clientId];
-            if (!target) continue;
-
-            validIds.add(clientId);
-
-            // Local player is always authoritatively current
-            if (clientId === this.room?.clientId || (this.creature && clientId === this.creature.id)) {
-                this.interpolatedPresences[clientId] = this.creature?.getPresenceData() || target;
+            if (!target || target.isAlive === false || (typeof target.health === 'number' && target.health <= 0) || !target.segments || target.segments.length === 0) {
+                delete this.interpolatedPresences[clientId];
+                delete this.players[clientId];
                 continue;
             }
 
+            // Local player is always authoritatively current
+            if (clientId === this.room?.clientId || (this.creature && clientId === this.creature.id)) {
+                if (this.gameActive && this.creature && this.creature.isAlive && (typeof this.creature.health !== 'number' || this.creature.health > 0)) {
+                    this.interpolatedPresences[clientId] = this.creature.getPresenceData();
+                    validIds.add(clientId);
+                } else {
+                    delete this.interpolatedPresences[clientId];
+                    delete this.players[clientId];
+                }
+                continue;
+            }
+
+            validIds.add(clientId);
+
             // Local AI players run at full frame rate on the host
             if (clientId.startsWith('ai-') && this.aiController?.aiPresences[clientId]) {
-                this.interpolatedPresences[clientId] = this.aiController.aiPresences[clientId];
+                const aiPres = this.aiController.aiPresences[clientId];
+                if (aiPres && aiPres.isAlive !== false && (typeof aiPres.health !== 'number' || aiPres.health > 0)) {
+                    this.interpolatedPresences[clientId] = aiPres;
+                } else {
+                    delete this.interpolatedPresences[clientId];
+                    delete this.players[clientId];
+                }
                 continue;
             }
 
@@ -534,7 +550,8 @@ class NarwhaleGame {
         this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
         
         const presencesToRender = this.interpolatedPresences || this.playerPresences;
-        this.renderer.render(this.ctx, this.camera, presencesToRender, this.creature, this.bubbles);
+        const localCreatureToRender = (this.gameActive && this.creature && this.creature.isAlive) ? this.creature : null;
+        this.renderer.render(this.ctx, this.camera, presencesToRender, localCreatureToRender, this.bubbles);
         
         if (this.gameActive && this.creature && this.creature.isInked) {
             this.inkSystem.drawInkEffect(this.ctx);
@@ -582,23 +599,44 @@ class NarwhaleGame {
     }
 
     handlePlayerDeath() {
-        const killCount = this.creature.kills || 0;
+        const killCount = this.creature ? (this.creature.kills || 0) : 0;
         
         // Update the player stats with the current kills count
-        this.playerStats.updateCurrentKills(killCount);
-        this.playerStats.recordGameEnd();
+        if (this.playerStats) {
+            this.playerStats.updateCurrentKills(killCount);
+            this.playerStats.recordGameEnd();
+        }
         
         // Reset kill count in presence data immediately for leaderboard
-        this.creature.kills = 0;
-        this.room.updatePresence({
-            kills: 0,
-            isAlive: false
-        });
+        if (this.creature) {
+            this.creature.kills = 0;
+            this.creature.isAlive = false;
+            this.creature.health = 0;
+        }
+        
+        if (this.room) {
+            this.room.updatePresence({
+                id: this.room.clientId,
+                kills: 0,
+                isAlive: false,
+                health: 0,
+                segments: []
+            });
+        }
+
+        // Clean up all local player presences from game state so it is removed from map immediately
+        delete this.playerPresences[this.room?.clientId];
+        if (this.interpolatedPresences) {
+            delete this.interpolatedPresences[this.room?.clientId];
+        }
+        if (this.players) {
+            delete this.players[this.room?.clientId];
+        }
         
         const username = (this.room.peers && this.room.peers[this.room.clientId]?.username) || 
                          (typeof localStorage !== 'undefined' && localStorage.getItem('username')) || 
                          "Player";
-        if (username) {
+        if (username && this.globalLeaderboardManager && this.playerStats) {
             this.globalLeaderboardManager.submitScore(
                 username,
                 this.playerStats.getStats().bestKills,
@@ -606,15 +644,18 @@ class NarwhaleGame {
             );
         }
         
-        if (this.creature && this.creature.type) {
+        if (this.creature && this.creature.type && this.skinUnlockSystem) {
             this.skinUnlockSystem.resetSessionKills(this.creature.type);
         }
         
         this.gameActive = false;
+        this.creature = null; // Completely remove creature reference so it is never drawn frozen
         this.updateGameModeHud();
         
         // Keep the current kill count when showing death screen
-        this.startScreen.showDeathScreen(killCount);
+        if (this.startScreen) {
+            this.startScreen.showDeathScreen(killCount);
+        }
         
         this.mouse.pressed = false;
         this.keys = {};
@@ -646,6 +687,8 @@ class NarwhaleGame {
     }
 
     updateCamera() {
+        if (!this.creature || !this.creature.segments || !this.creature.segments[0]) return;
+
         let scale = 1;
         if (this.isMobile) {
             const smallerDimension = Math.min(window.innerWidth, window.innerHeight);

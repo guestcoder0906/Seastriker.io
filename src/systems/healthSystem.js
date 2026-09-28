@@ -74,8 +74,25 @@ export class HealthSystem {
                 this.game.room.updatePresence({
                     ...creature.getPresenceData(),
                     health: 0,
-                    isAlive: false
+                    isAlive: false,
+                    segments: []
                 });
+            }
+            
+            // Remove local presence and trigger death handler immediately
+            if (this.game) {
+                if (this.game.playerPresences) {
+                    delete this.game.playerPresences[this.game.room?.clientId];
+                }
+                if (this.game.interpolatedPresences) {
+                    delete this.game.interpolatedPresences[this.game.room?.clientId];
+                }
+                if (this.game.players) {
+                    delete this.game.players[this.game.room?.clientId];
+                }
+                if (typeof this.game.handlePlayerDeath === 'function') {
+                    this.game.handlePlayerDeath();
+                }
             }
             
             return true; // Player died
