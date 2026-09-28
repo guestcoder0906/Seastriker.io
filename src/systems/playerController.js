@@ -7,29 +7,47 @@ export class PlayerController {
     }
 
     handleCollisionRequest(updateRequest, fromClientId) {
+        if (!this.game.creature || !this.game.creature.isAlive) return;
+
         // While octopus is camouflaged, attacks/damage done to it only happen 50% of the time
-        if (updateRequest.type === 'collision' || updateRequest.type === 'bodyHit') {
+        if (updateRequest.type === 'collision' || updateRequest.type === 'bodyHit' || updateRequest.type === 'tentacleHit') {
             if (this.game.octopusAbilities && this.game.octopusAbilities.shouldEvadeAttack(this.game.creature)) {
                 return;
             }
         }
 
-        if (updateRequest.type === 'collision') {
-            // Handle collision with another player's tusk
+        if (updateRequest.type === 'collision' || updateRequest.type === 'bodyHit') {
             const damageAmount = updateRequest.damageAmount || 0;
+            const hitType = updateRequest.hitType || (updateRequest.type === 'collision' ? 'headHit' : 'bodyHit');
+
+            if (updateRequest.knockbackAngle !== undefined && updateRequest.knockbackForce) {
+                this.game.creature.velocity.x += Math.cos(updateRequest.knockbackAngle) * updateRequest.knockbackForce;
+                this.game.creature.velocity.y += Math.sin(updateRequest.knockbackAngle) * updateRequest.knockbackForce;
+            }
+
             const isDead = this.game.healthSystem.processDamage(
-                updateRequest.hitType, 
+                hitType, 
                 damageAmount,
                 fromClientId
             );
             
             if (isDead && fromClientId) {
-                // Only send this once, with explicit amount of 1
-                this.game.room.requestPresenceUpdate(fromClientId, {
-                    type: 'incrementKills',
-                    amount: 1,
-                    targetId: this.game.creature.id, // Add target ID to prevent duplicate processing
-                    killedUpgrades: this.game.creature.upgrades // Send killed player's upgrades
+                const killToken = `${fromClientId}_${this.game.creature.id}_${Date.now()}`;
+                if (this.game.room && typeof this.game.room.requestPresenceUpdate === 'function') {
+                    this.game.room.requestPresenceUpdate(fromClientId, {
+                        type: 'incrementKills',
+                        killToken,
+                        victimId: this.game.creature.id,
+                        victimName: this.game.creature.name || "Player",
+                        killedUpgrades: this.game.creature.upgrades
+                    });
+                }
+            }
+            
+            if (this.game.room) {
+                this.game.room.updatePresence({
+                    ...this.game.creature.getPresenceData(),
+                    velocity: this.game.creature.velocity
                 });
             }
         } 
@@ -39,68 +57,47 @@ export class PlayerController {
             this.game.creature.velocity.x += Math.cos(knockbackAngle) * updateRequest.knockbackForce;
             this.game.creature.velocity.y += Math.sin(knockbackAngle) * updateRequest.knockbackForce;
             
-            // Update our presence with new velocity
-            this.game.room.updatePresence({
-                ...this.game.creature.getPresenceData(),
-                velocity: this.game.creature.velocity
-            });
+            if (this.game.room) {
+                this.game.room.updatePresence({
+                    ...this.game.creature.getPresenceData(),
+                    velocity: this.game.creature.velocity
+                });
+            }
         }
-        else if (updateRequest.type === 'bodyHit') {
-            // Handle being hit by another creature
-            const knockbackAngle = updateRequest.knockbackAngle;
-            this.game.creature.velocity.x += Math.cos(knockbackAngle) * updateRequest.knockbackForce;
-            this.game.creature.velocity.y += Math.sin(knockbackAngle) * updateRequest.knockbackForce;
-            
-            // Process damage based on where the hit occurred
+        else if (updateRequest.type === 'incrementKills') {
+            const killToken = updateRequest.killToken || `${fromClientId}_${updateRequest.victimId || 'victim'}`;
+            if (!this.game._processedKillTokens) {
+                this.game._processedKillTokens = new Set();
+            }
+            if (this.game._processedKillTokens.has(killToken)) {
+                return; // Prevent duplicate award
+            }
+            this.game._processedKillTokens.add(killToken);
+
+            const victimName = updateRequest.victimName || "Player";
+            this.game.awardKill(victimName, updateRequest.killedUpgrades);
+        }
+        else if (updateRequest.type === 'tentacleHit') {
+            const damageAmount = updateRequest.damageAmount || 0;
             const isDead = this.game.healthSystem.processDamage(
-                updateRequest.hitType, 
-                updateRequest.damageAmount,
+                updateRequest.hitType || 'tentacleHit', 
+                damageAmount,
                 fromClientId
             );
-            
+
             if (isDead && fromClientId) {
+                const killToken = `${fromClientId}_${this.game.creature.id}_${Date.now()}`;
                 if (this.game.room && typeof this.game.room.requestPresenceUpdate === 'function') {
                     this.game.room.requestPresenceUpdate(fromClientId, {
                         type: 'incrementKills',
-                        amount: 1,
-                        targetId: this.game.creature.id,
+                        killToken,
+                        victimId: this.game.creature.id,
+                        victimName: this.game.creature.name || "Player",
                         killedUpgrades: this.game.creature.upgrades
                     });
                 }
             }
             
-            // Update our presence with new velocity
-            this.game.room.updatePresence({
-                ...this.game.creature.getPresenceData(),
-                velocity: this.game.creature.velocity
-            });
-        }
-        else if (updateRequest.type === 'incrementKills') {
-            // We've killed another player, increment our kill count
-            this.game.creature.kills++;
-            
-            // Track kill for skin unlocks using the new system
-            if (this.game.skinUnlockSystem && this.game.creature.type) {
-                this.game.skinUnlockSystem.trackKill(this.game.creature.type);
-            }
-            
-            // Update our presence with new kill count
-            this.game.room.updatePresence({
-                kills: this.game.creature.kills
-            });
-        }
-        else if (updateRequest.type === 'tentacleHit') {
-            // Handle being caught in squid tentacles
-            const damageAmount = updateRequest.damageAmount || 0;
-            
-            // Process damage
-            this.game.healthSystem.processDamage(
-                updateRequest.hitType, 
-                damageAmount,
-                fromClientId
-            );
-            
-            // Apply speed reduction if not already slowed
             if (!this.game.creature._tentacleSlowed) {
                 this.game.creature._originalTentacleSpeed = this.game.creature.speed;
                 this.game.creature.speed = this.game.creature._originalTentacleSpeed * (updateRequest.speedReduction || 0.5);
@@ -108,7 +105,6 @@ export class PlayerController {
             }
         }
         else if (updateRequest.type === 'restoreSpeed') {
-            // Restore speed after escaping tentacles
             if (this.game.creature._tentacleSlowed) {
                 this.game.creature.speed = this.game.creature._originalTentacleSpeed;
                 delete this.game.creature._tentacleSlowed;
@@ -133,13 +129,10 @@ export class PlayerController {
     }
 
     checkCollisions() {
-        // Only check collisions if local player is alive
-        if (!this.game.creature.isAlive) return;
+        if (!this.game.creature || !this.game.creature.isAlive) return;
         
-        // Use the NarwhalCollisions helper to check segment collisions
         this.game.narwhalCollisions.checkSegmentCollisions(this.game.creature, this.game.playerPresences);
         
-        // Different collision handling based on creature type
         if (this.game.creature.type === 'narwhal') {
             this.checkNarwhalCollisions();
         } else if (this.game.creature.type === 'dolphin') {
@@ -153,52 +146,7 @@ export class PlayerController {
         }
     }
     
-    dispatchAttackToTarget(clientId, damage, hitType, isLethal, angle, knockbackForce = 6) {
-        if (!clientId || clientId === this.game.room?.clientId || (this.game.creature && clientId === this.game.creature.id)) {
-            return;
-        }
-
-        const isAITarget = clientId.startsWith('ai-');
-        if (isAITarget) {
-            if (this.game.room && typeof this.game.room.attackBot === 'function') {
-                this.game.room.attackBot(clientId, damage, hitType, angle);
-            }
-            const aiPlayer = this.game.aiController?.aiPlayers?.[clientId];
-            if (aiPlayer) {
-                const killed = this.game.aiHealthSystem.processAIDamage(
-                    aiPlayer,
-                    isLethal ? 'lethal' : hitType,
-                    damage,
-                    this.game.creature.id
-                );
-                if (killed) {
-                    this.game.creature.kills++;
-                }
-            }
-        } else {
-            if (this.game.room && typeof this.game.room.attackPlayer === 'function') {
-                this.game.room.attackPlayer(clientId, damage, hitType, angle, knockbackForce);
-            }
-            if (this.game.room && typeof this.game.room.requestPresenceUpdate === 'function') {
-                this.game.room.requestPresenceUpdate(clientId, {
-                    type: isLethal ? 'collision' : 'bodyHit',
-                    hitType: hitType,
-                    damageAmount: damage,
-                    killed: isLethal,
-                    knockbackAngle: angle,
-                    knockbackForce
-                });
-            }
-        }
-
-        this.game.room.updatePresence({
-            ...this.game.creature.getPresenceData(),
-            kills: this.game.creature.kills
-        });
-    }
-
     checkNarwhalCollisions() {
-        // Check tusk collisions using the collision helper
         const collisionResult = this.game.narwhalCollisions.checkTuskNarwhalCollisions(
             this.game.creature, 
             this.game.playerPresences
@@ -206,21 +154,21 @@ export class PlayerController {
         
         if (collisionResult) {
             const clientId = collisionResult.clientId;
-            const targetPresence = this.game.playerPresences[clientId];
-            if (this.game.isSelf ? this.game.isSelf(clientId, targetPresence) : (clientId === this.game.room?.clientId || (this.game.creature && clientId === this.game.creature.id))) {
+            if (clientId === this.game.room?.clientId || (this.game.creature && clientId === this.game.creature.id)) {
                 return;
             }
             
-            // Cannot attack creatures hiding inside coral reefs since they are protected
+            const targetPresence = this.game.playerPresences[clientId];
             if (targetPresence && (targetPresence.isHiddenInReef || (this.game.coralReefSystem && this.game.coralReefSystem.isCreatureProtectedInReef(targetPresence)))) {
                 return;
             }
 
-            // While octopus is camouflaged, attacks/damage done to it only happen 50% of the time
             if (this.game.octopusAbilities && this.game.octopusAbilities.shouldEvadeAttack(targetPresence)) {
                 return;
             }
 
+            const isAITarget = clientId.startsWith('ai-');
+            
             if (collisionResult.type === 'tuskToTusk') {
                 if (this.game.room && typeof this.game.room.requestPresenceUpdate === 'function') {
                     this.game.room.requestPresenceUpdate(clientId, {
@@ -229,110 +177,127 @@ export class PlayerController {
                         knockbackForce: collisionResult.knockbackForce
                     });
                 }
-            } else if (collisionResult.type === 'lethal') {
-                this.dispatchAttackToTarget(
-                    clientId,
-                    collisionResult.damage,
-                    'lethal',
-                    true,
-                    this.game.creature.rotationAngle,
-                    8
-                );
-            } else {
-                this.dispatchAttackToTarget(
-                    clientId,
-                    collisionResult.damage,
-                    collisionResult.type,
-                    false,
-                    this.game.creature.rotationAngle,
-                    Math.min(8, (this.game.creature.velocity.x**2 + this.game.creature.velocity.y**2) / 2)
-                );
+            }
+            else {
+                if (isAITarget) {
+                    const aiPlayer = this.game.aiController.aiPlayers[clientId];
+                    if (aiPlayer) {
+                        const killed = this.game.aiHealthSystem.processAIDamage(
+                            aiPlayer, 
+                            collisionResult.type,
+                            collisionResult.damage, 
+                            this.game.creature.id
+                        );
+                        if (killed) {
+                            this.game.awardKill(aiPlayer.creature?.name || "AI Narwhal");
+                        }
+                    }
+                } else {
+                    if (this.game.room && typeof this.game.room.requestPresenceUpdate === 'function') {
+                        this.game.room.requestPresenceUpdate(clientId, {
+                            type: 'collision',
+                            hitType: collisionResult.type,
+                            damageAmount: collisionResult.damage,
+                            segmentIndex: collisionResult.segment,
+                            knockbackAngle: this.game.creature.rotationAngle,
+                            knockbackForce: Math.min(10, (this.game.creature.velocity.x**2 + this.game.creature.velocity.y**2)) / 2
+                        });
+                    }
+                }
             }
         }
     }
     
     checkSharkCollisions() {
-        // For sharks, we use their built-in collision detection
         const collisionResult = this.game.creature.checkSharkCollisions(this.game.playerPresences);
         
         if (collisionResult && typeof collisionResult === 'object') {
             const clientId = collisionResult.clientId;
-            const targetPresence = this.game.playerPresences[clientId];
-            if (this.game.isSelf ? this.game.isSelf(clientId, targetPresence) : (clientId === this.game.room?.clientId || (this.game.creature && clientId === this.game.creature.id))) {
+            if (clientId === this.game.room?.clientId || (this.game.creature && clientId === this.game.creature.id)) {
                 return;
             }
             
-            // Cannot attack creatures hiding inside coral reefs since they are protected
+            const targetPresence = this.game.playerPresences[clientId];
             if (targetPresence && (targetPresence.isHiddenInReef || (this.game.coralReefSystem && this.game.coralReefSystem.isCreatureProtectedInReef(targetPresence)))) {
                 return;
             }
 
-            // While octopus is camouflaged, attacks/damage done to it only happen 50% of the time
             if (this.game.octopusAbilities && this.game.octopusAbilities.shouldEvadeAttack(targetPresence)) {
                 return;
             }
 
-            if (collisionResult.type === 'lethal') {
-                this.dispatchAttackToTarget(
-                    clientId,
-                    collisionResult.damage,
-                    'lethal',
-                    true,
-                    this.game.creature.rotationAngle,
-                    8
-                );
+            const isAITarget = clientId.startsWith('ai-');
+            
+            if (isAITarget) {
+                const aiPlayer = this.game.aiController.aiPlayers[clientId];
+                if (aiPlayer) {
+                    const killed = this.game.aiHealthSystem.processAIDamage(
+                        aiPlayer, 
+                        collisionResult.type,
+                        collisionResult.damage, 
+                        this.game.creature.id
+                    );
+                    if (killed) {
+                        this.game.awardKill(aiPlayer.creature?.name || "AI Shark");
+                    }
+                }
             } else {
-                this.dispatchAttackToTarget(
-                    clientId,
-                    collisionResult.damage,
-                    collisionResult.type,
-                    false,
-                    this.game.creature.rotationAngle,
-                    Math.min(8, (this.game.creature.velocity.x**2 + this.game.creature.velocity.y**2) / 2)
-                );
+                if (this.game.room && typeof this.game.room.requestPresenceUpdate === 'function') {
+                    this.game.room.requestPresenceUpdate(clientId, {
+                        type: 'bodyHit',
+                        hitType: collisionResult.type,
+                        damageAmount: collisionResult.damage,
+                        knockbackAngle: this.game.creature.rotationAngle,
+                        knockbackForce: Math.min(10, (this.game.creature.velocity.x**2 + this.game.creature.velocity.y**2)) / 2
+                    });
+                }
             }
         }
     }
     
     checkKnifeFishCollisions() {
-        // Check collisions using the knife fish's own collision detection
         const collisionResult = this.game.creature.checkKnifeFishCollisions(this.game.playerPresences);
         
         if (collisionResult && typeof collisionResult === 'object') {
             const clientId = collisionResult.clientId;
-            const targetPresence = this.game.playerPresences[clientId];
-            if (this.game.isSelf ? this.game.isSelf(clientId, targetPresence) : (clientId === this.game.room?.clientId || (this.game.creature && clientId === this.game.creature.id))) {
+            if (clientId === this.game.room?.clientId || (this.game.creature && clientId === this.game.creature.id)) {
                 return;
             }
             
-            // Cannot attack creatures hiding inside coral reefs since they are protected
+            const targetPresence = this.game.playerPresences[clientId];
             if (targetPresence && (targetPresence.isHiddenInReef || (this.game.coralReefSystem && this.game.coralReefSystem.isCreatureProtectedInReef(targetPresence)))) {
                 return;
             }
 
-            // While octopus is camouflaged, attacks/damage done to it only happen 50% of the time
             if (this.game.octopusAbilities && this.game.octopusAbilities.shouldEvadeAttack(targetPresence)) {
                 return;
             }
 
-            if (collisionResult.type === 'lethal') {
-                this.dispatchAttackToTarget(
-                    clientId,
-                    collisionResult.damage,
-                    'lethal',
-                    true,
-                    this.game.creature.rotationAngle,
-                    8
-                );
+            const isAITarget = clientId.startsWith('ai-');
+            
+            if (isAITarget) {
+                const aiPlayer = this.game.aiController.aiPlayers[clientId];
+                if (aiPlayer) {
+                    const killed = this.game.aiHealthSystem.processAIDamage(
+                        aiPlayer, 
+                        collisionResult.type,
+                        collisionResult.damage, 
+                        this.game.creature.id
+                    );
+                    if (killed) {
+                        this.game.awardKill(aiPlayer.creature?.name || "AI Knifefish");
+                    }
+                }
             } else {
-                this.dispatchAttackToTarget(
-                    clientId,
-                    collisionResult.damage,
-                    collisionResult.type,
-                    false,
-                    this.game.creature.rotationAngle,
-                    Math.min(8, (this.game.creature.velocity.x**2 + this.game.creature.velocity.y**2) / 2)
-                );
+                if (this.game.room && typeof this.game.room.requestPresenceUpdate === 'function') {
+                    this.game.room.requestPresenceUpdate(clientId, {
+                        type: 'bodyHit',
+                        hitType: collisionResult.type,
+                        damageAmount: collisionResult.damage,
+                        knockbackAngle: this.game.creature.rotationAngle,
+                        knockbackForce: Math.min(8, (this.game.creature.velocity.x**2 + this.game.creature.velocity.y**2)) / 2
+                    });
+                }
             }
         }
     }
@@ -343,46 +308,46 @@ export class PlayerController {
         
         if (collisionResult && typeof collisionResult === 'object') {
             const clientId = collisionResult.clientId;
-            const targetPresence = this.game.playerPresences[clientId];
-            if (this.game.isSelf ? this.game.isSelf(clientId, targetPresence) : (clientId === this.game.room?.clientId || (this.game.creature && clientId === this.game.creature.id))) {
+            if (clientId === this.game.room?.clientId || (this.game.creature && clientId === this.game.creature.id)) {
                 return;
             }
+            const targetPresence = this.game.playerPresences[clientId];
             if (targetPresence && (targetPresence.isHiddenInReef || (this.game.coralReefSystem && this.game.coralReefSystem.isCreatureProtectedInReef(targetPresence)))) {
                 return;
             }
 
-            // While octopus is camouflaged, attacks/damage done to it only happen 50% of the time
             if (this.game.octopusAbilities && this.game.octopusAbilities.shouldEvadeAttack(targetPresence)) {
                 return;
             }
 
-            if (collisionResult.type === 'lethal') {
-                this.dispatchAttackToTarget(
-                    clientId,
-                    collisionResult.damage,
-                    'lethal',
-                    true,
-                    this.game.creature.rotationAngle,
-                    8
-                );
-            } else if (collisionResult.type === 'tailSnap') {
-                this.dispatchAttackToTarget(
-                    clientId,
-                    collisionResult.damage,
-                    'tailSnap',
-                    false,
-                    collisionResult.fromAngle || this.game.creature.rotationAngle,
-                    8
-                );
+            const isAITarget = clientId.startsWith('ai-');
+
+            if (isAITarget) {
+                const aiPlayer = this.game.aiController.aiPlayers[clientId];
+                if (aiPlayer) {
+                    const killed = this.game.aiHealthSystem.processAIDamage(
+                        aiPlayer,
+                        collisionResult.type,
+                        collisionResult.damage,
+                        this.game.creature.id
+                    );
+                    if (killed) {
+                        this.game.awardKill(aiPlayer.creature?.name || "AI Dolphin");
+                    }
+                    const knockbackAngle = collisionResult.fromAngle || this.game.creature.rotationAngle;
+                    aiPlayer.creature.velocity.x += Math.cos(knockbackAngle) * 8;
+                    aiPlayer.creature.velocity.y += Math.sin(knockbackAngle) * 8;
+                }
             } else {
-                this.dispatchAttackToTarget(
-                    clientId,
-                    collisionResult.damage,
-                    collisionResult.type,
-                    false,
-                    this.game.creature.rotationAngle,
-                    4
-                );
+                if (this.game.room && typeof this.game.room.requestPresenceUpdate === 'function') {
+                    this.game.room.requestPresenceUpdate(clientId, {
+                        type: 'bodyHit',
+                        hitType: collisionResult.type,
+                        damageAmount: collisionResult.damage,
+                        knockbackAngle: collisionResult.fromAngle || this.game.creature.rotationAngle,
+                        knockbackForce: collisionResult.type === 'tailSnap' ? 8 : 4
+                    });
+                }
             }
         }
     }
@@ -396,7 +361,6 @@ export class PlayerController {
             }
         }
 
-        // Head ram / dash collision for squid and octopus
         const squid = this.game.creature;
         if (!squid || !squid.isAlive || !squid.segments || squid.segments.length === 0) return;
 
@@ -412,7 +376,6 @@ export class PlayerController {
             if (!target || !target.segments || target.segments.length === 0) continue;
             if (target.isHiddenInReef || (this.game.coralReefSystem && this.game.coralReefSystem.isCreatureProtectedInReef(target))) continue;
 
-            // While octopus is camouflaged, attacks/damage done to it only happen 50% of the time
             if (this.game.octopusAbilities && this.game.octopusAbilities.shouldEvadeAttack(target)) continue;
 
             let hit = false;
@@ -428,18 +391,35 @@ export class PlayerController {
 
             if (hit) {
                 this.recentCollisions[clientId] = now;
+                const isAITarget = clientId.startsWith('ai-');
                 const isOctopus = squid.skinId === 'octopus';
                 const baseDamage = isOctopus ? (CONFIG.OCTOPUS_HEAD_DAMAGE || 20) : (CONFIG.SQUID_TENTACLE_DAMAGE || 25);
                 const damage = squid.isDashing ? Math.round(baseDamage * 1.25) : baseDamage;
 
-                this.dispatchAttackToTarget(
-                    clientId,
-                    damage,
-                    'bodyHit',
-                    false,
-                    squid.rotationAngle,
-                    6
-                );
+                if (isAITarget) {
+                    const aiPlayer = this.game.aiController.aiPlayers[clientId];
+                    if (aiPlayer) {
+                        const killed = this.game.aiHealthSystem.processAIDamage(
+                            aiPlayer,
+                            'bodyHit',
+                            damage,
+                            squid.id
+                        );
+                        if (killed) {
+                            this.game.awardKill(aiPlayer.creature?.name || (isOctopus ? "AI Octopus" : "AI Squid"));
+                        }
+                    }
+                } else {
+                    if (this.game.room && typeof this.game.room.requestPresenceUpdate === 'function') {
+                        this.game.room.requestPresenceUpdate(clientId, {
+                            type: 'bodyHit',
+                            hitType: 'bodyHit',
+                            damageAmount: damage,
+                            knockbackAngle: squid.rotationAngle,
+                            knockbackForce: 4.5
+                        });
+                    }
+                }
             }
         }
     }

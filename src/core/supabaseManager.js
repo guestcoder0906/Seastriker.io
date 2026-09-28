@@ -238,7 +238,7 @@ export class SupabaseRealtimeManager {
                     };
                     // Only initialize remotePresence if we don't already have live position data for them
                     if (key !== this.clientId && !this.remotePresences[key] && latest.segments && latest.segments.length > 0) {
-                        this.remotePresences[key] = latest;
+                        this.remotePresences[key] = { ...latest, lastSeen: performance.now() };
                     }
                 }
             }
@@ -391,12 +391,12 @@ export class SupabaseRealtimeManager {
                     payload: { senderId: this.clientId, t: this.lastPingSent }
                 }).catch(() => {});
 
-                // Gracefully prune stale remote presences with no updates for > 7 seconds
+                // Gracefully prune stale remote presences with no updates for > 15 seconds
                 const now = performance.now();
                 let pruned = false;
                 for (const id in this.remotePresences) {
                     const pres = this.remotePresences[id];
-                    if (pres && pres.lastSeen && (now - pres.lastSeen > 7000)) {
+                    if (pres && pres.lastSeen && (now - pres.lastSeen > 15000)) {
                         delete this.remotePresences[id];
                         delete this.peers[id];
                         pruned = true;

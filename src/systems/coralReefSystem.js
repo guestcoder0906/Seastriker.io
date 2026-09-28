@@ -334,29 +334,8 @@ export class CoralReefSystem {
     }
     
     shouldRenderCreature(presence) {
-        if (presence.isHiddenInReef) {
-            if (presence.id === this.game.room.clientId) {
-                return true;
-            }
-            
-            return false;
-        }
-        
-        // Special case for camouflaged octopuses
-        if (presence.isCamouflaged && presence.type === 'squid' && presence.skinId === 'octopus') {
-            // Check if the viewer is a KnifeFish (they can always see camouflaged creatures)
-            const localCreature = this.game.creature;
-            if (localCreature && localCreature.type === 'knifefish' && localCreature.canSeeCamouflaged) {
-                return true; // KnifeFish can see camouflaged creatures with full opacity
-            }
-            
-            // AI KnifeFish can also see camouflaged creatures
-            if (this.game.room.clientId.startsWith('ai-') && 
-                this.game.aiController.aiPlayers[this.game.room.clientId]?.creature?.type === 'knifefish') {
-                return true;
-            }
-        }
-        
+        // Creatures should never vanish or disappear randomly from the screen.
+        // Protected status in reefs is handled via collision and damage immunity.
         return true;
     }
 }

@@ -281,7 +281,7 @@ class NarwhaleGame {
                 current.skinId = target.skinId || current.skinId;
                 current.isDashing = Boolean(target.isDashing);
                 current.isDodging = Boolean(target.isDodging);
-                current.isAlive = Boolean(target.isAlive);
+                current.isAlive = target.isAlive !== undefined ? Boolean(target.isAlive) : (current.isAlive !== undefined ? current.isAlive : true);
                 current.kills = target.kills !== undefined ? target.kills : (current.kills || 0);
                 current.health = target.health !== undefined ? target.health : current.health;
                 current.isHiddenInReef = Boolean(target.isHiddenInReef);
@@ -540,6 +540,42 @@ class NarwhaleGame {
         if (this.gameActive && this.creature && this.creature.isInked) {
             this.inkSystem.drawInkEffect(this.ctx);
         }
+    }
+
+    awardKill(victimName = "Predator", killedUpgrades = null) {
+        if (!this.creature || !this.creature.isAlive) return;
+        
+        this.creature.kills = (this.creature.kills || 0) + 1;
+        
+        // Track kill for skin unlocks
+        if (this.skinUnlockSystem && this.creature.type) {
+            this.skinUnlockSystem.trackKill(this.creature.type);
+        }
+        
+        // Update player stats
+        if (this.playerStats) {
+            this.playerStats.recordKill();
+            this.playerStats.updateCurrentKills(this.creature.kills);
+        }
+        
+        // Update presence
+        if (this.room) {
+            this.room.updatePresence({
+                ...this.creature.getPresenceData(),
+                kills: this.creature.kills
+            });
+            this.room.broadcastKill(this.creature.name || "Player", victimName);
+        }
+        
+        // Show kill feed on screen
+        this.showKillFeedMessage({
+            type: 'kill',
+            killer: this.creature.name || "Player",
+            victim: victimName
+        });
+        
+        // Update leaderboard
+        this.updateLeaderboard();
     }
 
     handlePlayerDeath() {

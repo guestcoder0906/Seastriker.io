@@ -37,7 +37,7 @@ export class AIHealthSystem {
                 delete narwhal._originalTentacleSpeed;
             }
 
-            // Handle attacker kill count increment
+            // Handle attacker kill count increment if attacker is an AI or remote player
             if (attackerClientId) {
                 if (attackerClientId.startsWith('ai-')) {
                     const attackerAI = this.game.aiController.aiPlayers[attackerClientId];
@@ -46,12 +46,13 @@ export class AIHealthSystem {
                         this.game.aiController.aiPresences[attackerClientId] = attackerAI.creature.getPresenceData();
                         this.game.playerPresences[attackerClientId] = this.game.aiController.aiPresences[attackerClientId];
                     }
-                } else {
+                } else if (attackerClientId !== this.game.room?.clientId && attackerClientId !== this.game.creature?.id) {
                     if (this.game.room && typeof this.game.room.requestPresenceUpdate === 'function') {
                         this.game.room.requestPresenceUpdate(attackerClientId, {
                             type: 'incrementKills',
                             amount: 1,
-                            targetId: narwhal.id
+                            victimId: narwhal.id,
+                            victimName: narwhal.name || "AI Predator"
                         });
                     }
                 }
