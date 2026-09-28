@@ -108,13 +108,10 @@ export class GameRenderer {
         // Draw ocean background with full scale awareness so it never cuts off
         this.drawOceanBackground(ctx, camera, currentScale);
         
-        // Draw bubbles
-        this.drawBubbles(ctx, camera, bubbles);
-        
         // Draw world borders
         this.drawWorldBorders(ctx);
         
-        // Draw coral reefs
+        // Draw rock formations
         if (this.game.coralReefRenderer) {
             this.game.coralReefRenderer.drawCoralReefs(ctx);
         }
@@ -139,41 +136,46 @@ export class GameRenderer {
         if (this.game.gameActive && narwhal && narwhal.isAlive && (typeof narwhal.health !== 'number' || narwhal.health > 0)) {
             this.drawCreatureByType(ctx, narwhal, true);
         }
+
+        // Draw the blue water overlay ON TOP OF map objects and creatures (higher z-index / layering)
+        this.drawWaterOverlay(ctx, camera, currentScale);
+        
+        // Draw floating bubbles in the water column
+        this.drawBubbles(ctx, camera, bubbles);
         
         // Restore context state
         ctx.restore();
     }
 
     createOceanBackground() {
-        // Create an off-screen canvas for the ocean background
+        // Create an off-screen canvas for the sand ground seabed
         const canvas = document.createElement('canvas');
         canvas.width = CONFIG.WORLD_WIDTH;
         canvas.height = CONFIG.WORLD_HEIGHT;
         const ctx = canvas.getContext('2d');
         
-        // Fill with base ocean color
-        ctx.fillStyle = CONFIG.WATER_COLOR;
+        // 1. Fill with warm golden sand base
+        ctx.fillStyle = CONFIG.SAND_COLOR || '#dfb875';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         
-        // Add depth variations (no animation)
-        const depthColors = CONFIG.WATER_DEPTH_COLORS;
-        const tileSize = 200;
+        // 2. Add subtle underwater sand dunes and ripple variations
+        const sandVariations = CONFIG.WATER_DEPTH_COLORS || ['#d4aa60', '#e5c483', '#caa052', '#edd49b'];
+        const tileSize = 220;
         
         for (let x = 0; x < CONFIG.WORLD_WIDTH; x += tileSize) {
             for (let y = 0; y < CONFIG.WORLD_HEIGHT; y += tileSize) {
-                const colorIndex = Math.floor(Math.random() * depthColors.length);
-                ctx.fillStyle = depthColors[colorIndex];
+                const colorIndex = Math.floor(Math.random() * sandVariations.length);
+                ctx.fillStyle = sandVariations[colorIndex];
                 
-                // Create irregular patterns
-                ctx.globalAlpha = 0.4;
+                // Gentle organic sand dune patches
+                ctx.globalAlpha = 0.35;
                 ctx.beginPath();
                 
-                // Draw an irregular shape
-                const centerX = x + tileSize/2;
-                const centerY = y + tileSize/2;
-                const radius = tileSize/2 * (0.5 + Math.random() * 0.5);
+                const centerX = x + tileSize / 2;
+                const centerY = y + tileSize / 2;
+                const radius = (tileSize / 2) * (0.6 + Math.random() * 0.45);
                 
-                for (let angle = 0; angle < Math.PI * 2; angle += 0.2) {
+                for (let angle = 0; angle < Math.PI * 2; angle += 0.25) {
                     const r = radius * (0.8 + Math.random() * 0.4);
                     const pointX = centerX + Math.cos(angle) * r;
                     const pointY = centerY + Math.sin(angle) * r;
@@ -187,11 +189,119 @@ export class GameRenderer {
                 
                 ctx.closePath();
                 ctx.fill();
-                ctx.globalAlpha = 1.0;
             }
         }
+
+        // 3. Draw horizontal seabed sand ripples / wave crests
+        ctx.globalAlpha = 0.22;
+        const rippleSpacing = 65;
+        for (let y = 15; y < CONFIG.WORLD_HEIGHT; y += rippleSpacing) {
+            ctx.beginPath();
+            ctx.moveTo(0, y);
+            
+            for (let x = 0; x <= CONFIG.WORLD_WIDTH; x += 40) {
+                const rippleY = y + Math.sin(x * 0.02 + y * 0.01) * 8 + Math.cos(x * 0.01) * 4;
+                ctx.lineTo(x, rippleY);
+            }
+            
+            ctx.strokeStyle = '#c09242'; // Darker sand shadow ripple
+            ctx.lineWidth = 3;
+            ctx.stroke();
+
+            // Lighter sand crest highlight just above
+            ctx.beginPath();
+            ctx.moveTo(0, y - 2);
+            for (let x = 0; x <= CONFIG.WORLD_WIDTH; x += 40) {
+                const rippleY = (y - 2) + Math.sin(x * 0.02 + y * 0.01) * 8 + Math.cos(x * 0.01) * 4;
+                ctx.lineTo(x, rippleY);
+            }
+            ctx.strokeStyle = '#fff0c7';
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+        }
+
+        // 4. Subtle sand grains and pebble flecks across seabed
+        ctx.globalAlpha = 0.25;
+        ctx.fillStyle = '#b38234';
+        for (let i = 0; i < 900; i++) {
+            const rx = Math.random() * CONFIG.WORLD_WIDTH;
+            const ry = Math.random() * CONFIG.WORLD_HEIGHT;
+            const size = 1 + Math.random() * 2.5;
+            ctx.beginPath();
+            ctx.arc(rx, ry, size, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        ctx.globalAlpha = 1.0;
         
         return canvas;
+    }
+
+    drawWaterOverlay(ctx, camera, currentScale = 1) {
+        ctx.save();
+        
+        // Calculate the visible world boundaries based on canvas dimensions, camera position, and scale
+        const canvasW = ctx.canvas.width;
+        const canvasH = ctx.canvas.height;
+        const halfW = canvasW / 2;
+        const halfH = canvasH / 2;
+
+        const visibleMinX = camera.x - halfW * (1 / currentScale - 1);
+        const visibleMinY = camera.y - halfH * (1 / currentScale - 1);
+        const visibleMaxX = visibleMinX + canvasW / currentScale;
+        const visibleMaxY = visibleMinY + canvasH / currentScale;
+
+        const margin = 2000;
+        const fillX = Math.min(visibleMinX - margin, -margin);
+        const fillY = Math.min(visibleMinY - margin, -margin);
+        const fillW = Math.max(visibleMaxX + margin, CONFIG.WORLD_WIDTH + margin) - fillX;
+        const fillH = Math.max(visibleMaxY + margin, CONFIG.WORLD_HEIGHT + margin) - fillY;
+
+        // 1. Rich blue ocean water overlay cast directly over ground, map items, and sea creatures
+        const waterGradient = ctx.createLinearGradient(0, 0, 0, CONFIG.WORLD_HEIGHT);
+        waterGradient.addColorStop(0, 'rgba(14, 135, 235, 0.36)');
+        waterGradient.addColorStop(0.5, 'rgba(10, 115, 215, 0.40)');
+        waterGradient.addColorStop(1, 'rgba(6, 85, 180, 0.48)');
+        
+        ctx.fillStyle = waterGradient;
+        ctx.fillRect(fillX, fillY, fillW, fillH);
+
+        // 2. Animated water caustic reflections & light ripples playing across creature bodies and seabed
+        const now = performance.now() * 0.001;
+        const tileSize = 160;
+        const startX = Math.max(0, Math.floor(visibleMinX / tileSize) * tileSize);
+        const endX = Math.min(CONFIG.WORLD_WIDTH, Math.ceil(visibleMaxX / tileSize) * tileSize + tileSize);
+        const startY = Math.max(0, Math.floor(visibleMinY / tileSize) * tileSize);
+        const endY = Math.min(CONFIG.WORLD_HEIGHT, Math.ceil(visibleMaxY / tileSize) * tileSize + tileSize);
+
+        // Caustic glow loops across the water volume
+        ctx.strokeStyle = 'rgba(180, 245, 255, 0.22)';
+        ctx.lineWidth = 3.5;
+        ctx.lineJoin = 'round';
+        ctx.lineCap = 'round';
+
+        for (let x = startX; x < endX; x += tileSize) {
+            for (let y = startY; y < endY; y += tileSize) {
+                const off1 = Math.sin(x * 0.015 + now * 1.1) * 14 + Math.cos(y * 0.015 + now * 0.9) * 14;
+                const off2 = Math.cos(x * 0.018 - now * 0.8) * 12 + Math.sin(y * 0.018 + now * 1.2) * 12;
+
+                ctx.beginPath();
+                ctx.moveTo(x + 20 + off1, y + 40 + off2);
+                ctx.bezierCurveTo(
+                    x + 70 + off2, y + 20 - off1,
+                    x + 110 - off1, y + 90 + off2,
+                    x + 140 + off2, y + 60 + off1
+                );
+                ctx.stroke();
+
+                // Subtle caustic pool highlight
+                ctx.fillStyle = 'rgba(140, 230, 255, 0.09)';
+                ctx.beginPath();
+                ctx.arc(x + 80 + off1, y + 80 + off2, 45, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        ctx.restore();
     }
 
     drawOceanBackground(ctx, camera, currentScale = 1) {

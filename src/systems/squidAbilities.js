@@ -65,6 +65,7 @@ export class SquidAbilities {
                     this.tentacleHitboxes[clientId] = {
                         squidId: squid.id,
                         lastHitTime: performance.now(),
+                        lastDamageTime: 0,
                         escapeTime: 0
                     };
                 } else {
@@ -130,6 +131,15 @@ calculateTentacleHitbox(squid) {
     }
     
     applyTentacleEffects(squid, targetId) {
+        if (!this.tentacleHitboxes[targetId]) {
+            this.tentacleHitboxes[targetId] = {
+                squidId: squid ? squid.id : null,
+                lastHitTime: performance.now(),
+                lastDamageTime: 0,
+                escapeTime: 0
+            };
+        }
+
         // Apply slow effect to squid with player in tentacles
         if (!squid._tentacleSlowed) {
             squid._originalTentacleSpeed = squid.speed;
@@ -147,56 +157,50 @@ calculateTentacleHitbox(squid) {
         }
         
         const tickInterval = 600; // Balanced interval between damage ticks
+        const now = performance.now();
+        const hitboxInfo = this.tentacleHitboxes[targetId];
+        const canDamage = !hitboxInfo.lastDamageTime || (now - hitboxInfo.lastDamageTime > tickInterval);
         
         // Apply damage and slow effect to trapped player
         const isLocalTarget = targetId === this.game.room.clientId || (this.game.creature && targetId === this.game.creature.id);
         if (isLocalTarget) {
             // Apply slow effect to local player using the new system
-            if (this.game.octopusTentacleEffect) {
+            if (this.game.octopusTentacleEffect && this.game.creature) {
                 this.game.octopusTentacleEffect.applySlow(this.game.creature, squid.id);
             }
             
-            // Apply damage every 650ms
-            const now = performance.now();
-            if (!this.tentacleHitboxes[targetId].lastDamageTime || 
-                now - this.tentacleHitboxes[targetId].lastDamageTime > tickInterval) {
-                
+            if (canDamage) {
+                hitboxInfo.lastDamageTime = now;
                 this.game.healthSystem.processDamage("tentacleHit", damageAmount, squid.id);
-                this.tentacleHitboxes[targetId].lastDamageTime = now;
             }
-        } else if (targetId.startsWith('ai-') && this.game.aiController.aiPlayers[targetId]) {
+        } else if (targetId.startsWith('ai-') && this.game.aiController?.aiPlayers?.[targetId]) {
             // Apply slow effect to AI player
             const aiCreature = this.game.aiController.aiPlayers[targetId].creature;
-            if (this.game.octopusTentacleEffect) {
+            if (this.game.octopusTentacleEffect && aiCreature) {
                 this.game.octopusTentacleEffect.applySlow(aiCreature, squid.id);
             }
             
-            // Apply damage every 650ms
-            const now = performance.now();
-            if (!this.tentacleHitboxes[targetId].lastDamageTime || 
-                now - this.tentacleHitboxes[targetId].lastDamageTime > tickInterval) {
-                
+            if (canDamage) {
+                hitboxInfo.lastDamageTime = now;
                 this.game.aiHealthSystem.processAIDamage(
                     this.game.aiController.aiPlayers[targetId],
                     "tentacleHit",
                     damageAmount,
                     squid.id
                 );
-                this.tentacleHitboxes[targetId].lastDamageTime = now;
             }
         } else {
-            // Human player - send damage and slow effect request
-            const now = performance.now();
-            if (!this.tentacleHitboxes[targetId].lastDamageTime || 
-                now - this.tentacleHitboxes[targetId].lastDamageTime > tickInterval) {
-                
-                this.game.room.requestPresenceUpdate(targetId, {
-                    type: 'tentacleHit',
-                    hitType: 'tentacleHit',
-                    damageAmount: damageAmount,
-                    speedReduction: 0.4
-                });
-                this.tentacleHitboxes[targetId].lastDamageTime = now;
+            // Human player in multiplayer - send damage and slow effect request
+            if (canDamage) {
+                hitboxInfo.lastDamageTime = now;
+                if (this.game.room && typeof this.game.room.requestPresenceUpdate === 'function') {
+                    this.game.room.requestPresenceUpdate(targetId, {
+                        type: 'tentacleHit',
+                        hitType: 'tentacleHit',
+                        damageAmount: damageAmount,
+                        speedReduction: 0.4
+                    });
+                }
             }
         }
     }

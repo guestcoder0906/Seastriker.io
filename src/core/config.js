@@ -40,8 +40,10 @@ export const CONFIG = {
     SEGMENT_OVERLAP: 0.8, // How much segments can overlap (0.8 = 80% of segment size)
     
     // Visual settings
-    WATER_COLOR: "#1e90ff", 
-    WATER_DEPTH_COLORS: ["#186bc9", "#1e90ff", "#4ba3ff"], 
+    SAND_COLOR: "#dfb875",
+    WATER_OVERLAY_COLOR: "rgba(14, 116, 204, 0.32)",
+    WATER_COLOR: "#081d34", 
+    WATER_DEPTH_COLORS: ["#d4aa60", "#e5c483", "#caa052", "#edd49b"], 
     BUBBLE_FREQUENCY: 0.01,
     BUBBLE_MAX_SIZE: 5,
     BUBBLE_MIN_SIZE: 1,
