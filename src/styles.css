@@ -33,21 +33,21 @@ body {
 
 #leaderboard {
     position: absolute;
-    top: 12px;
-    right: 12px;
-    width: 220px;
-    height: 220px;
-    min-width: 170px;
-    max-width: 500px;
-    min-height: 120px;
-    max-height: 75vh;
-    background: rgba(10, 25, 47, 0.85);
-    border: 1.5px solid rgba(56, 189, 248, 0.4);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.12);
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
+    top: 10px;
+    right: 10px;
+    width: 185px;
+    height: 170px;
+    min-width: 140px;
+    max-width: 450px;
+    min-height: 95px;
+    max-height: 70vh;
+    background: rgba(8, 20, 38, 0.45);
+    border: 1px solid rgba(56, 189, 248, 0.22);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
     color: #f1f5f9;
-    border-radius: 12px;
+    border-radius: 8px;
     z-index: 20;
     display: flex;
     flex-direction: column;
@@ -68,15 +68,17 @@ body {
 }
 
 #leaderboard.dragging {
-    opacity: 0.94;
+    opacity: 0.85;
+    background: rgba(8, 20, 38, 0.65);
     border-color: #38bdf8;
-    box-shadow: 0 14px 32px rgba(56, 189, 248, 0.4);
+    box-shadow: 0 8px 24px rgba(56, 189, 248, 0.35);
     cursor: grabbing !important;
 }
 
 #leaderboard.resizing {
+    background: rgba(8, 20, 38, 0.65);
     border-color: #38bdf8;
-    box-shadow: 0 0 20px rgba(56, 189, 248, 0.45);
+    box-shadow: 0 0 14px rgba(56, 189, 248, 0.35);
 }
 
 body.leaderboard-drag-active,
@@ -95,9 +97,9 @@ body.leaderboard-resize-active * {
 #leaderboard.minimized {
     height: auto !important;
     min-height: 0 !important;
-    width: 190px !important;
-    border-radius: 18px;
-    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.6);
+    width: 165px !important;
+    border-radius: 14px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45);
 }
 
 #leaderboard.minimized .leaderboard-body,
@@ -109,9 +111,9 @@ body.leaderboard-resize-active * {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 8px 10px 8px 12px;
-    background: rgba(15, 23, 42, 0.8);
-    border-bottom: 1px solid rgba(56, 189, 248, 0.25);
+    padding: 4px 6px 4px 8px;
+    background: rgba(10, 22, 42, 0.40);
+    border-bottom: 1px solid rgba(56, 189, 248, 0.18);
     cursor: grab;
     flex-shrink: 0;
 }
@@ -123,13 +125,13 @@ body.leaderboard-resize-active * {
 .leaderboard-title-wrap {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 4px;
     pointer-events: none;
 }
 
 .leaderboard-drag-grip {
-    font-size: 13px;
-    color: rgba(56, 189, 248, 0.5);
+    font-size: 11px;
+    color: rgba(56, 189, 248, 0.45);
     letter-spacing: -2px;
     line-height: 1;
     cursor: grab;
@@ -141,40 +143,40 @@ body.leaderboard-resize-active * {
 }
 
 .leaderboard-icon {
-    font-size: 14px;
+    font-size: 11px;
 }
 
 .leaderboard-title {
-    font-size: 13px;
-    font-weight: 800;
-    letter-spacing: 0.5px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.3px;
     color: #e2e8f0;
     text-transform: uppercase;
 }
 
 .leaderboard-count-badge {
-    background: rgba(56, 189, 248, 0.2);
+    background: rgba(56, 189, 248, 0.18);
     color: #38bdf8;
-    font-size: 11px;
+    font-size: 10px;
     font-weight: 700;
-    padding: 1px 6px;
-    border-radius: 10px;
-    border: 1px solid rgba(56, 189, 248, 0.4);
+    padding: 0 4px;
+    border-radius: 8px;
+    border: 1px solid rgba(56, 189, 248, 0.3);
 }
 
 .leaderboard-controls {
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: 3px;
 }
 
 .leaderboard-btn {
-    background: rgba(255, 255, 255, 0.1);
-    border: 1px solid rgba(255, 255, 255, 0.15);
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.12);
     color: #94a3b8;
-    width: 24px;
-    height: 24px;
-    border-radius: 6px;
+    width: 20px;
+    height: 20px;
+    border-radius: 4px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -184,14 +186,14 @@ body.leaderboard-resize-active * {
 }
 
 .leaderboard-btn:hover {
-    background: rgba(56, 189, 248, 0.3);
+    background: rgba(56, 189, 248, 0.25);
     color: #ffffff;
-    border-color: rgba(56, 189, 248, 0.6);
-    transform: scale(1.08);
+    border-color: rgba(56, 189, 248, 0.5);
+    transform: scale(1.05);
 }
 
 .leaderboard-btn .min-icon {
-    font-size: 15px;
+    font-size: 13px;
     font-weight: bold;
     line-height: 1;
 }
@@ -208,12 +210,12 @@ body.leaderboard-resize-active * {
 .leaderboard-column-headers {
     display: flex;
     justify-content: space-between;
-    padding: 5px 12px 3px 12px;
-    font-size: 10px;
+    padding: 2px 8px 1px 8px;
+    font-size: 9px;
     font-weight: 700;
     color: #64748b;
-    letter-spacing: 0.5px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    letter-spacing: 0.4px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
     flex-shrink: 0;
 }
 
@@ -222,58 +224,59 @@ body.leaderboard-resize-active * {
     min-height: 0;
     overflow-y: auto;
     overflow-x: hidden;
-    padding: 4px 6px;
+    padding: 2px 4px;
     scrollbar-width: thin;
-    scrollbar-color: rgba(56, 189, 248, 0.4) rgba(10, 25, 47, 0.3);
+    scrollbar-color: rgba(56, 189, 248, 0.3) rgba(10, 25, 47, 0.2);
     display: flex;
     flex-direction: column;
-    gap: 3px;
+    gap: 2px;
 }
 
 .players-list::-webkit-scrollbar {
-    width: 5px;
+    width: 4px;
 }
 
 .players-list::-webkit-scrollbar-track {
-    background: rgba(10, 25, 47, 0.3);
-    border-radius: 4px;
+    background: rgba(10, 25, 47, 0.15);
+    border-radius: 3px;
 }
 
 .players-list::-webkit-scrollbar-thumb {
-    background: rgba(56, 189, 248, 0.45);
-    border-radius: 4px;
+    background: rgba(56, 189, 248, 0.35);
+    border-radius: 3px;
 }
 
 .players-list::-webkit-scrollbar-thumb:hover {
-    background: rgba(56, 189, 248, 0.75);
+    background: rgba(56, 189, 248, 0.65);
 }
 
 .player-entry {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 4px 8px;
+    padding: 2px 5px;
     margin: 0;
-    background: rgba(255, 255, 255, 0.04);
-    border-radius: 6px;
-    font-size: 12px;
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 4px;
+    font-size: 11px;
+    line-height: 1.2;
     transition: background 0.15s ease;
     border: 1px solid transparent;
 }
 
 .player-entry:hover {
-    background: rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.07);
 }
 
 .player-entry.is-local {
-    background: rgba(14, 116, 144, 0.3);
-    border: 1px solid rgba(56, 189, 248, 0.5);
-    box-shadow: 0 0 10px rgba(56, 189, 248, 0.2);
+    background: rgba(14, 116, 144, 0.24);
+    border: 1px solid rgba(56, 189, 248, 0.4);
+    box-shadow: 0 0 6px rgba(56, 189, 248, 0.15);
 }
 
 .player-entry.is-local .player-name {
     color: #38bdf8;
-    font-weight: 800;
+    font-weight: 700;
 }
 
 .player-entry.is-ai {
@@ -288,16 +291,16 @@ body.leaderboard-resize-active * {
 .player-name-wrap {
     display: flex;
     align-items: center;
-    gap: 6px;
-    max-width: 75%;
+    gap: 4px;
+    max-width: 74%;
     overflow: hidden;
 }
 
 .player-rank {
-    font-size: 11px;
+    font-size: 10px;
     font-weight: 700;
     color: #94a3b8;
-    min-width: 14px;
+    min-width: 12px;
     text-align: center;
 }
 
@@ -306,23 +309,25 @@ body.leaderboard-resize-active * {
     text-overflow: ellipsis;
     white-space: nowrap;
     font-weight: 600;
+    font-size: 10.5px;
 }
 
 .player-kills-badge {
-    background: rgba(239, 68, 68, 0.25);
+    background: rgba(239, 68, 68, 0.22);
     color: #fca5a5;
-    border: 1px solid rgba(239, 68, 68, 0.4);
-    padding: 1px 6px;
-    border-radius: 8px;
-    font-size: 11px;
-    font-weight: 800;
+    border: 1px solid rgba(239, 68, 68, 0.35);
+    padding: 0 4px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 700;
     flex-shrink: 0;
+    line-height: 1.3;
 }
 
 .player-entry.is-local .player-kills-badge {
-    background: rgba(56, 189, 248, 0.25);
+    background: rgba(56, 189, 248, 0.22);
     color: #7dd3fc;
-    border-color: rgba(56, 189, 248, 0.5);
+    border-color: rgba(56, 189, 248, 0.4);
 }
 
 .leaderboard-resize-handle {

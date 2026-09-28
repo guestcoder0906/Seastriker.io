@@ -21,8 +21,8 @@ export class LeaderboardWidget {
         this.isResizing = false;
         this.resizeStartX = 0;
         this.resizeStartY = 0;
-        this.startWidth = 220;
-        this.startHeight = 200;
+        this.startWidth = 185;
+        this.startHeight = 170;
         this.startLeft = 0;
         this.startTop = 0;
         this.currentResizeX = 0;
@@ -30,10 +30,10 @@ export class LeaderboardWidget {
         this.resizeSide = 'left'; // 'left' or 'right'
         this.resizeRafId = null;
         
-        this.defaultWidth = 220;
-        this.defaultHeight = 200;
-        this.expandedWidth = 320;
-        this.expandedHeight = 360;
+        this.defaultWidth = 185;
+        this.defaultHeight = 170;
+        this.expandedWidth = 280;
+        this.expandedHeight = 300;
         
         this.cachedPlayersData = [];
         this.pendingUpdate = false;
