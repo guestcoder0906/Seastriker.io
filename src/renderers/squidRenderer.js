@@ -110,7 +110,7 @@ export class SquidRenderer {
 
         const time = performance.now() * 0.001;
         const isDashing = !!squid.isDashing;
-        const waveSpeed = isDashing ? 11 : 6.5;
+        const waveSpeed = isDashing ? 6.5 : 3.8;
         const waveAmp = isDashing ? 0.2 : 0.35;
         const segmentDist = tentacleLength / (numSegments - 1);
 

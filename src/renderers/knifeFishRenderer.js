@@ -112,7 +112,7 @@ export class KnifeFishRenderer {
         for (let t = 0; t <= 1; t += 0.08) {
             const fx = finStartX + (finEndX - finStartX) * t;
             const finBase = bodyWidth * 0.48 * Math.sin(Math.PI * t);
-            const finWave = Math.sin(tailPhase * 1.6 - t * Math.PI * 4) * (bodyWidth * 0.16);
+            const finWave = Math.sin(tailPhase * 1.0 - t * Math.PI * 3) * (bodyWidth * 0.14);
             ctx.lineTo(fx, finBase + finWave);
         }
         ctx.lineTo(finEndX, bodyWidth * 0.15);

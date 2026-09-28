@@ -110,7 +110,7 @@ export class OctopusRenderer {
 
         const time = performance.now() * 0.001;
         const isDashing = !!squid.isDashing;
-        const waveSpeed = isDashing ? 11.5 : 6.8;
+        const waveSpeed = isDashing ? 6.8 : 4.0;
         const waveAmp = isDashing ? 0.22 : 0.38;
         const segmentDist = tentacleLength / (numSegments - 1);
 

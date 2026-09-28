@@ -57,13 +57,15 @@ export class KnifeFish extends Creature {
         if (this.dodgeCooldown > 0) this.dodgeCooldown--;
 
         // Fast swim handling: allows fast swimming smoothly without stuttering/jittering under half green circle
-        const drainRate = CONFIG.FAST_SWIM_DRAIN_RATE || (1 / 120);
-        const regenRate = CONFIG.FAST_SWIM_REGEN_RATE || (1 / 120);
+        const drainRate = CONFIG.FAST_SWIM_DRAIN_RATE || (1 / 180);
+        const regenRate = CONFIG.FAST_SWIM_REGEN_RATE || (1 / 180);
+        const minSprintStart = CONFIG.FAST_SWIM_MIN_STAMINA || 0.5;
 
-        if (fastSwimPressed && this.stamina > 0.005 && !this.isSprintExhausted) {
+        if (fastSwimPressed && !this.isSprintExhausted && this.stamina > 0.01) {
             this.isFastSwimming = true;
             this.stamina = Math.max(0, this.stamina - drainRate);
             if (this.stamina <= 0) {
+                this.stamina = 0;
                 this.isFastSwimming = false;
                 this.isSprintExhausted = true;
                 this.isExhausted = true;
@@ -72,7 +74,7 @@ export class KnifeFish extends Creature {
             this.isFastSwimming = false;
             this.stamina = Math.min(1.0, this.stamina + regenRate);
             if (this.isSprintExhausted) {
-                if (this.stamina >= 0.25 || (!fastSwimPressed && this.stamina >= 0.1)) {
+                if (this.stamina >= minSprintStart || (!fastSwimPressed && this.stamina >= 0.3)) {
                     this.isSprintExhausted = false;
                     this.isExhausted = false;
                 }
@@ -174,7 +176,7 @@ export class KnifeFish extends Creature {
         const actualSpeed = Math.hypot(this.velocity.x, this.velocity.y);
         const isMoving = actualSpeed > 0.35 || this.isFastSwimming;
         if (isMoving) {
-            const phaseStep = this.isFastSwimming ? 0.6 : Math.min(0.38, Math.max(0.14, actualSpeed * 0.04));
+            const phaseStep = this.isFastSwimming ? 0.32 : Math.min(0.20, Math.max(0.08, actualSpeed * 0.022));
             this.fastSwimPhase = (this.fastSwimPhase || 0) + phaseStep;
         }
 

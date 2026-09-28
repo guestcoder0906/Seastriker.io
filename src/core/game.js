@@ -683,7 +683,7 @@ class NarwhaleGame {
                 x: Math.random() * CONFIG.WORLD_WIDTH,
                 y: Math.random() * CONFIG.WORLD_HEIGHT,
                 size: CONFIG.BUBBLE_MIN_SIZE + Math.random() * (CONFIG.BUBBLE_MAX_SIZE - CONFIG.BUBBLE_MIN_SIZE),
-                speedY: -0.5 - Math.random() * 1.5,
+                speedY: -0.3 - Math.random() * 0.8,
                 opacity: 0.1 + Math.random() * 0.5
             });
         }
@@ -702,7 +702,7 @@ class NarwhaleGame {
                     x: Math.random() * CONFIG.WORLD_WIDTH,
                     y: CONFIG.WORLD_HEIGHT + bubble.size,
                     size: CONFIG.BUBBLE_MIN_SIZE + Math.random() * (CONFIG.BUBBLE_MAX_SIZE - CONFIG.BUBBLE_MIN_SIZE),
-                    speedY: -0.5 - Math.random() * 1.5,
+                    speedY: -0.3 - Math.random() * 0.8,
                     opacity: 0.1 + Math.random() * 0.5
                 });
             }

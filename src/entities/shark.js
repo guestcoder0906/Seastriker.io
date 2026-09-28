@@ -61,13 +61,15 @@ export class Shark extends Creature {
         if (this.dodgeCooldown > 0) this.dodgeCooldown--;
 
         // Fast swim handling: allows fast swimming smoothly without stuttering/jittering under half green circle
-        const drainRate = CONFIG.FAST_SWIM_DRAIN_RATE || (1 / 120);
-        const regenRate = CONFIG.FAST_SWIM_REGEN_RATE || (1 / 120);
+        const drainRate = CONFIG.FAST_SWIM_DRAIN_RATE || (1 / 180);
+        const regenRate = CONFIG.FAST_SWIM_REGEN_RATE || (1 / 180);
+        const minSprintStart = CONFIG.FAST_SWIM_MIN_STAMINA || 0.5;
 
-        if (fastSwimPressed && this.stamina > 0.005 && !this.isSprintExhausted) {
+        if (fastSwimPressed && !this.isSprintExhausted && this.stamina > 0.01) {
             this.isFastSwimming = true;
             this.stamina = Math.max(0, this.stamina - drainRate);
             if (this.stamina <= 0) {
+                this.stamina = 0;
                 this.isFastSwimming = false;
                 this.isSprintExhausted = true;
                 this.isExhausted = true;
@@ -77,7 +79,7 @@ export class Shark extends Creature {
             this.stamina = Math.min(1.0, this.stamina + regenRate);
             if (this.isSprintExhausted) {
                 // Must recover stamina buffer before sprinting can re-engage, preventing micro-jitter on empty
-                if (this.stamina >= 0.25 || (!fastSwimPressed && this.stamina >= 0.1)) {
+                if (this.stamina >= minSprintStart || (!fastSwimPressed && this.stamina >= 0.3)) {
                     this.isSprintExhausted = false;
                     this.isExhausted = false;
                 }
@@ -153,13 +155,13 @@ export class Shark extends Creature {
         const actualSpeed = Math.hypot(this.velocity.x, this.velocity.y);
         const isMoving = actualSpeed > 0.3 || this.isFastSwimming;
         if (isMoving) {
-            const phaseStep = this.isFastSwimming ? 0.38 : Math.min(0.25, Math.max(0.08, actualSpeed * 0.025));
+            const phaseStep = this.isFastSwimming ? 0.22 : Math.min(0.15, Math.max(0.05, actualSpeed * 0.015));
             this.fastSwimPhase += phaseStep;
         }
 
         // Smoothly interpolate swimming wave amplitude (avoids abrupt pops or jerks)
         const targetWaveAmp = isMoving ? (this.isFastSwimming ? 0.28 : 0.14) : 0;
-        this.currentWaveAmp = this.lerp(this.currentWaveAmp || 0, targetWaveAmp, 0.12);
+        this.currentWaveAmp = this.lerp(this.currentWaveAmp || 0, targetWaveAmp, 0.09);
 
         const segmentSpacing = CONFIG.SEGMENT_SIZE * 0.5;
         // Update body segment physics with smooth angular swimming wave (zero jitter, preserved spacing)
