@@ -9,7 +9,7 @@ export class StartScreen {
         this.creatureSelectionManager = new CreatureSelectionManager(game);
         this.validationTimeout = null;
         this.isValidUsername = true;
-        this.selectedMode = this.game.room.gameMode || 'singleplayer';
+        this.selectedMode = this.game.room.gameMode || 'multiplayer';
         this.setupScreenElements();
     }
 
@@ -279,9 +279,9 @@ export class StartScreen {
 
         if (this.playButton) {
             if (this.selectedMode === 'singleplayer') {
-                this.playButton.textContent = 'PLAY SINGLE PLAYER (VS AI)';
+                this.playButton.textContent = 'PLAY (VS AI)';
             } else {
-                this.playButton.textContent = 'PLAY MULTIPLAYER ARENA';
+                this.playButton.textContent = 'PLAY';
             }
         }
     }
@@ -359,13 +359,6 @@ export class StartScreen {
         if (this.game.room) {
             this.game.room.setUsername(cleanName);
             this.game.room.setGameMode(this.selectedMode);
-        }
-
-        if (this.selectedMode === 'multiplayer') {
-            const has = await this.game.room.supabase.hasCredentials();
-            if (has && this.game.room.supabase.connectionStatus !== 'connected') {
-                await this.game.room.supabase.connect();
-            }
         }
 
         this.hide();

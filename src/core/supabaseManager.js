@@ -1,5 +1,8 @@
 import { createClient } from '@supabase/supabase-js';
 
+const DEFAULT_SUPABASE_URL = 'https://hguresgswifsjamgypcg.supabase.co';
+const DEFAULT_SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhndXJlc2dzd2lmc2phbWd5cGNnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA1Mjc1MzksImV4cCI6MjEwNjEwMzUzOX0.B-pFItn9R0R3SIGvACysblN1-Wy6OhrhX27xspAsvtA';
+
 export class SupabaseRealtimeManager {
     constructor() {
         this.client = null;
@@ -19,13 +22,12 @@ export class SupabaseRealtimeManager {
         this.remotePresences = {};
         this.localPresence = null;
         this.lastBroadcastTime = 0;
-        this.broadcastThrottleMs = 33; // ~30 fps updates for movement
+        this.broadcastThrottleMs = 45; // ~22 fps smooth movement without hitting rate limits
         
         this.pingMs = 0;
         this.lastPingSent = 0;
         this.pingInterval = null;
 
-        this.cachedCredentials = null;
         this.peers[this.clientId] = { id: this.clientId, username: this.username };
     }
 
@@ -41,45 +43,29 @@ export class SupabaseRealtimeManager {
         return defaultName;
     }
 
-    async getCredentials() {
-        if (this.cachedCredentials) return this.cachedCredentials;
-
+    getCredentials() {
         let url = '';
         let key = '';
 
-        // 1. Check Vite build-time environment variables
         if (typeof import.meta !== 'undefined' && import.meta.env) {
             url = import.meta.env.VITE_SUPABASE_URL || '';
             key = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
         }
 
-        // 2. If not found in client env, check server proxy endpoint
         if (!url || !key) {
-            try {
-                const res = await fetch('/api/multiplayer-config');
-                if (res.ok) {
-                    const data = await res.json();
-                    if (data.useSupabase && data.supabaseUrl && data.supabaseAnonKey) {
-                        url = data.supabaseUrl;
-                        key = data.supabaseAnonKey;
-                    }
-                }
-            } catch (err) {
-                // Ignore network errors
-            }
+            url = DEFAULT_SUPABASE_URL;
+            key = DEFAULT_SUPABASE_ANON_KEY;
         }
 
-        this.cachedCredentials = {
-            url: url ? url.trim() : '',
-            key: key ? key.trim() : '',
+        return {
+            url: url.trim(),
+            key: key.trim(),
             roomCode: this.currentRoom
         };
-
-        return this.cachedCredentials;
     }
 
-    async hasCredentials() {
-        const creds = await this.getCredentials();
+    hasCredentials() {
+        const creds = this.getCredentials();
         return Boolean(creds.url && creds.key && creds.url.startsWith('http'));
     }
 
@@ -111,27 +97,29 @@ export class SupabaseRealtimeManager {
             this.currentRoom = roomCode.trim();
         }
 
-        const creds = await this.getCredentials();
+        const creds = this.getCredentials();
         if (!creds.url || !creds.key) {
-            this.notifyStatus('error', { error: 'No Supabase environment variables configured.' });
+            this.notifyStatus('error', { error: 'No Supabase credentials configured.' });
             return false;
         }
 
-        // Clean up any existing connection
-        await this.disconnect();
+        if (this.connectionStatus === 'connected' && this.channel) {
+            return true;
+        }
 
+        await this.disconnect();
         this.notifyStatus('connecting');
 
         try {
             this.client = createClient(creds.url, creds.key, {
                 realtime: {
                     params: {
-                        eventsPerSecond: 30
+                        eventsPerSecond: 25
                     }
                 }
             });
 
-            const channelName = `ocean-${this.currentRoom}`;
+            const channelName = `ocean-arena-${this.currentRoom}`;
             this.channel = this.client.channel(channelName, {
                 config: {
                     presence: { key: this.clientId },
@@ -144,7 +132,6 @@ export class SupabaseRealtimeManager {
             return new Promise((resolve) => {
                 const timer = setTimeout(() => {
                     if (this.connectionStatus !== 'connected') {
-                        console.warn('[Supabase] Connection timed out');
                         this.notifyStatus('error', { error: 'Connection timed out' });
                         resolve(false);
                     }
@@ -156,7 +143,6 @@ export class SupabaseRealtimeManager {
                         this.notifyStatus('connected');
                         this.startPingLoop();
 
-                        // Track initial presence
                         const initialPresence = {
                             id: this.clientId,
                             username: this.username,
@@ -166,10 +152,9 @@ export class SupabaseRealtimeManager {
                         try {
                             await this.channel.track(initialPresence);
                         } catch (trackErr) {
-                            console.warn('[Supabase] Initial track error:', trackErr);
+                            console.warn('[Supabase] Track error:', trackErr);
                         }
 
-                        // Send peer hello announcement
                         this.broadcast('peer_hello', {
                             id: this.clientId,
                             username: this.username
@@ -180,8 +165,7 @@ export class SupabaseRealtimeManager {
                         this.notifyStatus('disconnected');
                     } else if (status === 'CHANNEL_ERROR') {
                         clearTimeout(timer);
-                        console.error('[Supabase] Channel error:', err);
-                        this.notifyStatus('error', { error: err?.message || 'Supabase Realtime Channel Error' });
+                        this.notifyStatus('error', { error: err?.message || 'Supabase Channel Error' });
                         resolve(false);
                     }
                 });
@@ -253,7 +237,7 @@ export class SupabaseRealtimeManager {
             this.notifyPresenceUpdate();
         });
 
-        // 4. Broadcast: Fast Position / Creature Update
+        // 4. Fast Position Update
         this.channel.on('broadcast', { event: 'pos' }, ({ payload }) => {
             if (!payload || !payload.id || payload.id === this.clientId) return;
             this.remotePresences[payload.id] = payload;
@@ -263,7 +247,7 @@ export class SupabaseRealtimeManager {
             this.notifyPresenceUpdate();
         });
 
-        // 5. Broadcast: Combat Request / Damage / Hits
+        // 5. Combat Action
         this.channel.on('broadcast', { event: 'combat_action' }, ({ payload }) => {
             if (!payload) return;
             if (payload.targetId === this.clientId) {
@@ -276,7 +260,7 @@ export class SupabaseRealtimeManager {
             }
         });
 
-        // 6. Broadcast: Ink Clouds
+        // 6. Ink Clouds
         this.channel.on('broadcast', { event: 'ink_cloud' }, ({ payload }) => {
             if (!payload || payload.senderId === this.clientId) return;
             if (typeof window !== 'undefined' && window.game && window.game.inkSystem) {
@@ -284,14 +268,14 @@ export class SupabaseRealtimeManager {
             }
         });
 
-        // 7. Broadcast: Announcements / Kill Feed
+        // 7. Announcements / Kill Feed
         this.channel.on('broadcast', { event: 'kill_announcement' }, ({ payload }) => {
             if (payload) {
                 this.notifyAnnouncement(payload);
             }
         });
 
-        // 8. Broadcast: Heartbeat Ping / Pong
+        // 8. Ping / Pong
         this.channel.on('broadcast', { event: 'ping' }, ({ payload }) => {
             if (payload && payload.senderId !== this.clientId) {
                 this.channel.send({
@@ -362,7 +346,28 @@ export class SupabaseRealtimeManager {
         const now = performance.now();
         if (now - this.lastBroadcastTime >= this.broadcastThrottleMs) {
             this.lastBroadcastTime = now;
-            this.broadcast('pos', presenceData);
+            
+            // Clean minimal payload for high performance
+            const compactPayload = {
+                id: this.clientId,
+                name: presenceData.name || this.username,
+                x: presenceData.x,
+                y: presenceData.y,
+                segments: presenceData.segments,
+                color: presenceData.color,
+                velocity: presenceData.velocity,
+                isDashing: presenceData.isDashing,
+                isDodging: presenceData.isDodging,
+                isAlive: presenceData.isAlive,
+                kills: presenceData.kills,
+                health: presenceData.health,
+                type: presenceData.type,
+                skinId: presenceData.skinId,
+                isHiddenInReef: presenceData.isHiddenInReef,
+                rotationAngle: presenceData.rotationAngle
+            };
+
+            this.broadcast('pos', compactPayload);
         }
     }
 
