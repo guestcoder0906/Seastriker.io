@@ -65,13 +65,6 @@ export class Dolphin extends Creature {
     update(targetX, targetY, mousePressed, dodgePressed, fastSwimPressed, playerPresences) {
         if (!this.isAlive) return;
         
-        // Reef protection
-        if (this.isHiddenInReef && !this.isDashing) {
-            this.velocity.x = 0;
-            this.velocity.y = 0;
-            return;
-        }
-        
         if (this.dashCooldown > 0) this.dashCooldown--;
         if (this.dodgeCooldown > 0) this.dodgeCooldown--;
         if (this.dashTimer > 0) {
@@ -317,13 +310,13 @@ export class Dolphin extends Creature {
         const tailSegment = this.segments[this.segments.length - 1];
         
         for (const clientId in playerPresences) {
-            const other = playerPresences[clientId];
-            if (clientId === this.id || (typeof window !== 'undefined' && window.game?.isSelf && window.game.isSelf(clientId, other))) continue;
+            if (clientId === this.id) continue;
             
             if (this.recentCollisions[clientId] && (now - this.recentCollisions[clientId] < (CONFIG.COLLISION_COOLDOWN || 1000))) {
                 continue;
             }
             
+            const other = playerPresences[clientId];
             if (!other || !other.isAlive || !other.segments) continue;
             
             const isProtectedInCoral = other.isHiddenInReef || 

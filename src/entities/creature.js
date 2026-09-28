@@ -67,15 +67,8 @@ export class Creature {
     initializeSegments() {}
     update(targetX, targetY, mousePressed, dodgePressed, playerPresences) {
         if (!this.isAlive) return;
-
-        // If creature is hidden in a reef and not dashing, prevent all movement
-        if (this.isHiddenInReef && !this.isDashing) {
-            this.velocity.x = 0;
-            this.velocity.y = 0;
-            return;
-        }
         
-        // Continue with normal update if not hidden or is dashing
+        // Continue with normal update
         // ... rest of update implementation in subclasses ...
     }
     drawCreature() {}

@@ -196,34 +196,19 @@ export class CoralReefSystem {
     handleSmallCreatureInReef(clientId, creature, reef) {
         if (!this.hiddenCreatures[clientId]) {
             this.hiddenCreatures[clientId] = {
-                originalSpeed: creature.speed,
-                isHidden: false
+                isHidden: true
             };
         }
 
-        const hiddenCreature = this.hiddenCreatures[clientId];
-
-        // Immediately freeze creature upon entering reef
-        if (!creature.isDashing) {
-            creature.speed = 0;
-            hiddenCreature.isHidden = true;
-            creature.isHiddenInReef = true;
-        } else {
-            // Allow movement if creature is actively dashing (boosting)
-            creature.speed = hiddenCreature.originalSpeed * CONFIG.DASH_MULTIPLIER;
-            hiddenCreature.isHidden = false;
-            creature.isHiddenInReef = false;
-        }
+        creature.isHiddenInReef = true;
 
         if (clientId === this.game.room.clientId) {
             this.game.room.updatePresence({
-                isHiddenInReef: hiddenCreature.isHidden,
-                speed: creature.speed
+                isHiddenInReef: true
             });
         } else if (clientId.startsWith('ai-')) {
             if (this.game.aiController.aiPresences[clientId]) {
-                this.game.aiController.aiPresences[clientId].isHiddenInReef = hiddenCreature.isHidden;
-                this.game.aiController.aiPresences[clientId].speed = creature.speed;
+                this.game.aiController.aiPresences[clientId].isHiddenInReef = true;
                 this.game.playerPresences[clientId] = this.game.aiController.aiPresences[clientId];
             }
         }
@@ -304,21 +289,15 @@ export class CoralReefSystem {
     }
     
     restoreCreatureFromHiding(clientId, creature) {
-        const hiddenCreature = this.hiddenCreatures[clientId];
-        if (!hiddenCreature) return;
-
-        creature.speed = hiddenCreature.originalSpeed;
         creature.isHiddenInReef = false;
 
         if (clientId === this.game.room.clientId) {
             this.game.room.updatePresence({
-                isHiddenInReef: false,
-                speed: creature.speed
+                isHiddenInReef: false
             });
         } else if (clientId.startsWith('ai-')) {
             if (this.game.aiController.aiPresences[clientId]) {
                 this.game.aiController.aiPresences[clientId].isHiddenInReef = false;
-                this.game.aiController.aiPresences[clientId].speed = creature.speed;
                 this.game.playerPresences[clientId] = this.game.aiController.aiPresences[clientId];
             }
         }
@@ -351,36 +330,7 @@ export class CoralReefSystem {
     }
     
     drawCoralReefOverlay(ctx, creature) {
-        if (!creature.isHiddenInReef) return;
-        
-        ctx.save();
-        
-        ctx.fillStyle = 'rgba(0, 150, 150, 0.3)';
-        ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
-        
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
-        ctx.lineWidth = 3;
-        
-        for (let i = 0; i < 5; i++) {
-            const y = i * ctx.canvas.height / 5;
-            ctx.beginPath();
-            ctx.moveTo(0, y);
-            
-            for (let x = 0; x < ctx.canvas.width; x += 50) {
-                const amplitude = 20;
-                const waveY = y + Math.sin(x / 100 + performance.now() / 1000) * amplitude;
-                ctx.lineTo(x, waveY);
-            }
-            
-            ctx.stroke();
-        }
-        
-        ctx.font = 'bold 20px Arial';
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
-        ctx.textAlign = 'center';
-        ctx.fillText('HIDDEN IN CORAL', ctx.canvas.width / 2, 50);
-        
-        ctx.restore();
+        // Overlay removed to avoid visual obstruction
     }
     
     shouldRenderCreature(presence) {

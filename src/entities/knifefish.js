@@ -52,13 +52,6 @@ export class KnifeFish extends Creature {
     update(targetX, targetY, mousePressed, dodgePressed, fastSwimPressed, playerPresences) {
         if (!this.isAlive) return;
 
-        // If hidden in reef and not dashing, prevent all movement
-        if (this.isHiddenInReef && !this.isDashing) {
-            this.velocity.x = 0;
-            this.velocity.y = 0;
-            return;
-        }
-
         // Update cooldowns
         if (this.dashCooldown > 0) this.dashCooldown--;
         if (this.dodgeCooldown > 0) this.dodgeCooldown--;

@@ -121,13 +121,6 @@ export class Squid extends Creature {
 
     update(targetX, targetY, mousePressed, dodgePressed, fastSwimPressed, playerPresences) {
         if (!this.isAlive) return;
-        
-        // If hidden in reef and not dashing, prevent all movement
-        if (this.isHiddenInReef && !this.isDashing) {
-            this.velocity.x = 0;
-            this.velocity.y = 0;
-            return;
-        }
 
         // Store previous head position
         this.previousHeadPosition = {
