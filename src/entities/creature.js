@@ -29,6 +29,7 @@ export class Creature {
         this.isAlive = true;
         this.health = CONFIG.MAX_HEALTH;
         this.type = type; // 'narwhal' or 'shark' or 'squid'
+        this.healthRegenModifier = (type === 'knifefish') ? (CONFIG.KNIFEFISH_HEALTH_REGEN_MULTIPLIER || 1.4) : 1.0;
         
         // Upgrade properties
         this.upgrades = {};
@@ -131,6 +132,7 @@ export class Creature {
         this.tuskLengthModifier = 1.0;
         this.staminaCooldownModifier = 1.0;
         this.speedModifier = 1.0;
+        this.healthRegenModifier = (this.type === 'knifefish') ? (CONFIG.KNIFEFISH_HEALTH_REGEN_MULTIPLIER || 1.4) : 1.0;
         
         // Set correct base speed based on creature type
         if (this.type === 'shark') {

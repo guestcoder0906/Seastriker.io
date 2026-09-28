@@ -87,9 +87,16 @@ export class AIHealthSystem {
                 const narwhal = aiPlayer.creature;
 
                 if (narwhal.health < CONFIG.MAX_HEALTH) {
+                    const isKnifeFish = narwhal.type === 'knifefish';
+                    const baseRegen = CONFIG.HEALTH_REGEN_RATE || 0.14;
+                    const modifier = (typeof narwhal.healthRegenModifier === 'number' && narwhal.healthRegenModifier > 0)
+                        ? narwhal.healthRegenModifier
+                        : (isKnifeFish ? (CONFIG.KNIFEFISH_HEALTH_REGEN_MULTIPLIER || 1.4) : 1.0);
+                    const regenAmount = baseRegen * modifier;
+
                     narwhal.health = Math.min(
                         CONFIG.MAX_HEALTH,
-                        narwhal.health + CONFIG.HEALTH_REGEN_RATE
+                        narwhal.health + regenAmount
                     );
 
                     // Properly update AI presence with regenerated health

@@ -53,7 +53,7 @@ export class SkinSystem {
                 {
                     id: 'default',
                     name: 'Default Knife Fish',
-                    description: 'The standard knife fish.',
+                    description: 'Nimble swimmer that sees camouflaged creatures and regenerates health faster.',
                     unlocked: true,
                     selected: true
                 }

@@ -11,10 +11,16 @@ export class HealthSystem {
         const creature = this.game.creature;
         if (!creature || !creature.isAlive || !this.game.gameActive) return;
         
-        // Only regenerate health after 3 seconds of taking no damage
+        // Knife fish begins regenerating slightly faster after taking damage (2.2s vs 3.0s)
+        const isKnifeFish = creature.type === 'knifefish';
+        const regenDelay = isKnifeFish ? (CONFIG.KNIFEFISH_REGEN_DELAY || 2200) : 3000;
         const now = performance.now();
-        if (creature.health < CONFIG.MAX_HEALTH && (now - this.lastDamageTime > 3000)) {
-            const regenAmount = CONFIG.HEALTH_REGEN_RATE || 0.1;
+        if (creature.health < CONFIG.MAX_HEALTH && (now - this.lastDamageTime > regenDelay)) {
+            const baseRegen = CONFIG.HEALTH_REGEN_RATE || 0.14;
+            const modifier = (typeof creature.healthRegenModifier === 'number' && creature.healthRegenModifier > 0)
+                ? creature.healthRegenModifier
+                : (isKnifeFish ? (CONFIG.KNIFEFISH_HEALTH_REGEN_MULTIPLIER || 1.4) : 1.0);
+            const regenAmount = baseRegen * modifier;
             creature.health = Math.min(CONFIG.MAX_HEALTH, creature.health + regenAmount);
             
             // Sync updated health
