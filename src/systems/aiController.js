@@ -28,18 +28,9 @@ export class AIController {
         // Manage AI player count to dynamically adjust based on real players
         this.manageAIPlayerCount();
 
-        // Update each AI player
+        // Update each AI player every frame so AI movement speed precisely matches player speed
         for (const aiId in this.aiPlayers) {
-            // Add some randomness to AI updates to prevent synchronized behavior
-            if (!this.lastAIUpdate[aiId]) {
-                this.lastAIUpdate[aiId] = 0;
-            }
-            
-            // Update AI more frequently for better responsiveness
-            if (performance.now() - this.lastAIUpdate[aiId] > 30) { // Update every 30ms instead of 50ms
-                this.updateAIPlayer(aiId);
-                this.lastAIUpdate[aiId] = performance.now();
-            }
+            this.updateAIPlayer(aiId);
         }
     }
 

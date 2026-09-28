@@ -553,8 +553,12 @@ class NarwhaleGame {
         
         // Update player stats
         if (this.playerStats) {
-            this.playerStats.recordKill();
-            this.playerStats.updateCurrentKills(this.creature.kills);
+            if (typeof this.playerStats.recordKill === 'function') {
+                this.playerStats.recordKill();
+            }
+            if (typeof this.playerStats.updateCurrentKills === 'function') {
+                this.playerStats.updateCurrentKills(this.creature.kills);
+            }
         }
         
         // Update presence

@@ -95,19 +95,19 @@ export class Narwhal extends Creature {
         const burstCost = CONFIG.BURST_STAMINA_COST || 0.5;
         const canBurst = this.stamina > burstMin;
 
-        // Compute desired angle based on the target.
+        // Compute desired angle based on the target with a slight deadzone to prevent jitter
         const dx = targetX - this.segments[0].x;
         const dy = targetY - this.segments[0].y;
-        const desiredAngle = Math.atan2(dy, dx);
-        this.rotationAngle = this.lerpAngle(this.rotationAngle, desiredAngle, 0.1);
-
-        // Update movementAngle.
-        const angleDiff = this.rotationAngle - this.movementAngle;
-        if (Math.abs(angleDiff) > Math.PI / 2) {
-            this.movementAngle = this.lerpAngle(this.movementAngle, this.rotationAngle, 0.05);
-        } else {
-            this.movementAngle = this.lerpAngle(this.movementAngle, this.rotationAngle, 0.03);
+        const dist = Math.hypot(dx, dy);
+        if (dist > 12) {
+            const desiredAngle = Math.atan2(dy, dx);
+            this.rotationAngle = this.lerpAngle(this.rotationAngle, desiredAngle, 0.08);
         }
+
+        // Update movementAngle with natural hydrodynamic turning
+        const angleDiff = Math.abs(Math.atan2(Math.sin(this.rotationAngle - this.movementAngle), Math.cos(this.rotationAngle - this.movementAngle)));
+        const turnBlend = angleDiff > Math.PI / 2 ? 0.05 : 0.035;
+        this.movementAngle = this.lerpAngle(this.movementAngle, this.rotationAngle, turnBlend);
 
         // Check for dash / burst
         if (mousePressed && canBurst && !this.isDashing && this.dashCooldown <= 0) {

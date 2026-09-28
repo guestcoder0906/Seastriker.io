@@ -12,31 +12,31 @@ export const CONFIG = {
     
     // Physics settings
     // Same exact speed for both AI and player
-    BASE_SPEED: 9,  // Unified speed for both AI and players
-    DASH_MULTIPLIER: 3,
-    DASH_DURATION: 300,          // ms (increased from 300)
-    DASH_COOLDOWN: 30,           // 30 frames (1 second at 30fps) - 1 second ram cooldown for all creatures
-    RAM_COOLDOWN: 30,            // 30 frames (1 second at 30fps)
-    DODGE_FORCE: 20,             // reduced from 20
-    DODGE_COOLDOWN: 15,          // frames (~500ms at 30fps)
-    DODGE_DURATION: 300,         // ms (new property for dodge duration)
+    BASE_SPEED: 3.2,  // Calibrated, smooth swimming speed for both AI and players
+    DASH_MULTIPLIER: 2.0,        // Controlled punchy ram
+    DASH_DURATION: 300,          // ms
+    DASH_COOLDOWN: 30,           // 30 frames ram cooldown for all creatures
+    RAM_COOLDOWN: 30,            // 30 frames
+    DODGE_FORCE: 6.5,            // Clean controlled dodge
+    DODGE_COOLDOWN: 15,          // frames
+    DODGE_DURATION: 300,         // ms
     
     // Fast swim / Sprint settings (Holding Shift)
-    FAST_SWIM_MULTIPLIER: 1.65,  // Fast swim sprint speed multiplier
-    FAST_SWIM_DRAIN_RATE: 1 / 120, // Depletes full green to red in ~4s (120 frames at 30fps)
-    FAST_SWIM_REGEN_RATE: 1 / 120, // Equal regen rate to restore full green
+    FAST_SWIM_MULTIPLIER: 1.35,  // Smooth sprint acceleration
+    FAST_SWIM_DRAIN_RATE: 1 / 180, // Depletes full green to red smoothly
+    FAST_SWIM_REGEN_RATE: 1 / 180, // Equal regen rate to restore full green
     FAST_SWIM_MIN_STAMINA: 0.5,  // Sprint available while green circle is halfway or more green (>= 0.5)
-    BURST_STAMINA_COST: 0.5,     // Ramming uses half stamina (0.5) instead of 1/3
+    BURST_STAMINA_COST: 0.5,     // Ramming uses half stamina (0.5)
     BURST_MIN_STAMINA: 0.5,      // Stamina has to be more than 1/2 (> 0.5) to ram
     
     // Combat settings
-    KILL_VELOCITY_THRESHOLD: 7,
-    KNOCKBACK_FORCE: 0.5,
-    MINIMUM_IMPACT_VELOCITY: 0.5, // Minimum velocity for tusk damage (lowered so all combat strikes register)
+    KILL_VELOCITY_THRESHOLD: 2.8,
+    KNOCKBACK_FORCE: 0.4,
+    MINIMUM_IMPACT_VELOCITY: 0.2, // Minimum velocity for tusk damage
     COLLISION_COOLDOWN: 800,   // 800ms cooldown before same creatures can damage each other again
 
     // Segment collision settings 
-    SEGMENT_COLLISION_FORCE: 0.15, // Force applied when segments collide
+    SEGMENT_COLLISION_FORCE: 0.12, // Force applied when segments collide
     SEGMENT_OVERLAP: 0.8, // How much segments can overlap (0.8 = 80% of segment size)
     
     // Visual settings
@@ -59,7 +59,7 @@ export const CONFIG = {
     MOBILE_CAMERA_SCALE: 0.7, // Even wider view for mobile (changed from 0.8)
     
     // Shark settings
-    SHARK_SPEED_MULTIPLIER: 1.33,  // Sharks are 33% faster
+    SHARK_SPEED_MULTIPLIER: 1.15,  // Sharks are 15% faster
     SHARK_RAM_DAMAGE: 28,          // Lowered shark ram damage (was 38, originally 50)
     SHARK_HEAD_DAMAGE: 36,         // Lowered direct head bite damage (was 48, originally 60)
     SHARK_DASH_DAMAGE: 70,         // Lowered shark dash damage (was 85, originally 100)
@@ -73,8 +73,8 @@ export const CONFIG = {
 
     // Dolphin settings (Replaced kabob narwhal)
     DOLPHIN_SIZE_MULTIPLIER: 1.15,       // Slightly bigger size
-    DOLPHIN_SPEED_MULTIPLIER: 1.12,      // Slightly faster than narwhal (1.0 vs 1.12)
-    DOLPHIN_TURN_FACTOR: 0.16,           // Turns a bit more easily than narwhal (0.10)
+    DOLPHIN_SPEED_MULTIPLIER: 1.08,      // Slightly faster than narwhal
+    DOLPHIN_TURN_FACTOR: 0.12,           // Controlled turning
     DOLPHIN_VISION_MULTIPLIER: 1.35,     // Slightly bigger range of sight like hammerhead shark
     DOLPHIN_RAM_DAMAGE: 16,              // Ramming deals slightly less damage (lowered from 20)
     DOLPHIN_HEAD_DAMAGE: 20,             // Direct head-on ram (lowered from 25)
@@ -153,11 +153,11 @@ export const CONFIG = {
 
     // Knife Fish settings
     KNIFEFISH_SIZE_MULTIPLIER: 0.52,      // Knife fish slightly smaller (lowered from 0.6)
-    KNIFEFISH_SPEED_MULTIPLIER: 1.25,     // Faster than narwhal but slower than shark
+    KNIFEFISH_SPEED_MULTIPLIER: 1.10,     // Nimble but well balanced
     KNIFEFISH_SEGMENTS: 10,               // More segments than narwhal, less than squid
     KNIFEFISH_ATTACK_DAMAGE: 14,          // Base damage (lowered from 20)
     KNIFEFISH_BOOST_DAMAGE_MULTIPLIER: 2.5, // Damage multiplier when boosting (lowered from 3.0)
-    KNIFEFISH_DODGE_FORCE: 25,            // Higher dodge force
+    KNIFEFISH_DODGE_FORCE: 8.5,           // Balanced dodge force
     KNIFEFISH_DODGE_COOLDOWN: 180,        // 3 seconds (60 frames per second)
     KNIFEFISH_STAMINA_COOLDOWN: 180,      // 3 seconds cooldown
     KNIFEFISH_MINIMUM_IMPACT_VELOCITY: 2, // Lower minimum velocity for damage

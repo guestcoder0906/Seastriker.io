@@ -107,21 +107,18 @@ export class Dolphin extends Creature {
         const burstCost = CONFIG.BURST_STAMINA_COST || 0.5; // uses half stamina
         const canBurst = this.stamina > burstMin;
         
-        // Smooth head turning: Dolphin turns more easily than narwhal
+        // Smooth head turning: Dolphin turns gracefully
         const dx = targetX - this.segments[0].x;
         const dy = targetY - this.segments[0].y;
         const dist = Math.hypot(dx, dy);
-        if (dist > 8) {
+        if (dist > 12) {
             const desiredAngle = Math.atan2(dy, dx);
-            this.rotationAngle = this.lerpAngle(this.rotationAngle, desiredAngle, this.turnSpeed);
+            this.rotationAngle = this.lerpAngle(this.rotationAngle, desiredAngle, Math.min(0.10, this.turnSpeed || 0.10));
         }
         
-        const angleDiff = this.rotationAngle - this.movementAngle;
-        if (Math.abs(angleDiff) > Math.PI / 2) {
-            this.movementAngle = this.lerpAngle(this.movementAngle, this.rotationAngle, 0.08);
-        } else {
-            this.movementAngle = this.lerpAngle(this.movementAngle, this.rotationAngle, 0.05);
-        }
+        const angleDiff = Math.abs(Math.atan2(Math.sin(this.rotationAngle - this.movementAngle), Math.cos(this.rotationAngle - this.movementAngle)));
+        const turnBlend = angleDiff > Math.PI / 2 ? 0.06 : 0.04;
+        this.movementAngle = this.lerpAngle(this.movementAngle, this.rotationAngle, turnBlend);
         
         // Dash / Burst Attack - reliable ram whenever circle is green
         const cooldownFrames = CONFIG.RAM_COOLDOWN || CONFIG.DASH_COOLDOWN || 30;

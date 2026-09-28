@@ -41,9 +41,17 @@ export class PlayerStats {
         this.saveStats();
     }
 
+    recordKill() {
+        this.stats.totalKills = (this.stats.totalKills || 0) + 1;
+        this.stats.currentKills = (this.stats.currentKills || 0) + 1;
+        if (this.stats.currentKills > this.stats.bestKills) {
+            this.stats.bestKills = this.stats.currentKills;
+        }
+        this.saveStats();
+    }
+
     recordGameEnd() {
-        this.stats.totalKills += this.stats.currentKills;
-        this.stats.gamesPlayed++;
+        this.stats.gamesPlayed = (this.stats.gamesPlayed || 0) + 1;
         this.stats.currentKills = 0;
         this.saveStats();
     }

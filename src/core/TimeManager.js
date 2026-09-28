@@ -41,17 +41,21 @@ export class TimeManager {
             this.lastFpsUpdate = timestamp;
         }
         
-        // If using fixed timestep, return how many fixed steps to take (strictly clamped to max 2)
+        // If using fixed timestep, return how many fixed steps to take
         if (CONFIG.USE_FIXED_TIMESTEP) {
             this.accumulator += cappedDeltaTime;
             
-            // Hard reset accumulator if it lags too far behind to prevent freeze spirals
-            if (this.accumulator > this.fixedDeltaTime * 3) {
-                this.accumulator = this.fixedDeltaTime;
+            let steps = 0;
+            while (this.accumulator >= this.fixedDeltaTime && steps < 2) {
+                this.accumulator -= this.fixedDeltaTime;
+                steps++;
             }
             
-            const steps = Math.min(2, Math.floor(this.accumulator / this.fixedDeltaTime));
-            this.accumulator -= steps * this.fixedDeltaTime;
+            // Discard excess lag to prevent death spirals
+            if (this.accumulator > this.fixedDeltaTime) {
+                this.accumulator = 0;
+            }
+            
             return Math.max(1, steps);
         }
         

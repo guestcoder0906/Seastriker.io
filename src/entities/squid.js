@@ -169,15 +169,16 @@ export class Squid extends Creature {
         // Compute desired angle towards target
         const dx = targetX - this.segments[0].x;
         const dy = targetY - this.segments[0].y;
-        const desiredAngle = Math.atan2(dy, dx);
+        const dist = Math.hypot(dx, dy);
+        if (dist > 12) {
+            const desiredAngle = Math.atan2(dy, dx);
+            const isOctopus = this.skinId === 'octopus';
+            const steerSpeed = isOctopus ? 0.10 : 0.085;
+            this.rotationAngle = this.lerpAngle(this.rotationAngle, desiredAngle, steerSpeed);
+        }
 
-        // Smooth rotation - significantly more responsive steering
-        const isOctopus = this.skinId === 'octopus';
-        const steerSpeed = isOctopus ? 0.16 : 0.14; // Snappy turning response towards mouse/joystick
-        this.rotationAngle = this.lerpAngle(this.rotationAngle, desiredAngle, steerSpeed);
-
-        const angleDiff = this.rotationAngle - this.movementAngle;
-        const moveLerp = Math.abs(angleDiff) > Math.PI / 2 ? 0.14 : 0.09;
+        const angleDiff = Math.abs(Math.atan2(Math.sin(this.rotationAngle - this.movementAngle), Math.cos(this.rotationAngle - this.movementAngle)));
+        const moveLerp = angleDiff > Math.PI / 2 ? 0.08 : 0.05;
         this.movementAngle = this.lerpAngle(this.movementAngle, this.rotationAngle, moveLerp);
 
         // Check for dash - squids can also dash

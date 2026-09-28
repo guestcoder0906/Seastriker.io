@@ -89,11 +89,15 @@ export class KnifeFish extends Creature {
         // Compute desired angle based on the target
         const dx = targetX - this.segments[0].x;
         const dy = targetY - this.segments[0].y;
-        const desiredAngle = Math.atan2(dy, dx);
+        const dist = Math.hypot(dx, dy);
+        if (dist > 12) {
+            const desiredAngle = Math.atan2(dy, dx);
+            this.rotationAngle = this.lerpAngle(this.rotationAngle, desiredAngle, 0.095);
+        }
         
-        // Knife fish has more responsive movement and turning
-        this.rotationAngle = this.lerpAngle(this.rotationAngle, desiredAngle, 0.15);
-        this.movementAngle = this.lerpAngle(this.movementAngle, this.rotationAngle, 0.1);
+        const angleDiff = Math.abs(Math.atan2(Math.sin(this.rotationAngle - this.movementAngle), Math.cos(this.rotationAngle - this.movementAngle)));
+        const moveLerp = angleDiff > Math.PI / 2 ? 0.07 : 0.045;
+        this.movementAngle = this.lerpAngle(this.movementAngle, this.rotationAngle, moveLerp);
 
         // Check for dash - knife fish can dash
         const cooldownFrames = CONFIG.RAM_COOLDOWN || CONFIG.DASH_COOLDOWN || 30;
