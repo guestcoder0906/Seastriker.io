@@ -6,45 +6,80 @@ export class OctopusAbilities {
     }
     
     updateCamouflageStatus(squid, deltaTime) {
-        // Update camouflage cooldown
-        if (!squid.camouflageReady && squid.camouflageTimer > 0) {
-            // Apply cooldown modifier if available
-            if (squid.camouflageModifier) {
-                squid.camouflageTimer -= deltaTime * squid.camouflageModifier;
+        if (!squid) return squid;
+
+        // Standardize deltaTime to milliseconds (deltaTime could be in seconds like 0.0166s or frames like 1.0)
+        let dtMs = 1000 / 60; // default 16.67ms
+        if (typeof deltaTime === 'number' && deltaTime > 0) {
+            if (deltaTime < 0.5) {
+                // deltaTime is in seconds (e.g. 0.01667)
+                dtMs = deltaTime * 1000;
+            } else if (deltaTime <= 10) {
+                // deltaTime is in frame count (e.g. 1.0 or 2.0 steps)
+                dtMs = deltaTime * (1000 / 60);
             } else {
-                squid.camouflageTimer -= deltaTime;
+                // deltaTime is already in milliseconds
+                dtMs = deltaTime;
             }
+        }
+
+        const maxDuration = CONFIG.OCTOPUS_CAMOUFLAGE_DURATION || 3000;
+        const cooldownDuration = CONFIG.OCTOPUS_CAMOUFLAGE_COOLDOWN || 5000;
+
+        // Safety fallback: check wall-clock timestamp to ensure camouflage NEVER stays on forever
+        if (squid.isCamouflaged) {
+            const now = Date.now();
+            if (squid._camoStartTime && (now - squid._camoStartTime > maxDuration + 200)) {
+                squid.isCamouflaged = false;
+                squid.camouflageActiveTimer = 0;
+                squid.camouflageReady = false;
+                squid.camouflageTimer = cooldownDuration;
+                delete squid._camoStartTime;
+                return squid;
+            }
+
+            squid.camouflageActiveTimer = (squid.camouflageActiveTimer || maxDuration) - dtMs;
             
-            // Check if cooldown is complete - FIX: Set camouflageReady to true
+            // Check if camouflage duration has ended
+            if (squid.camouflageActiveTimer <= 0) {
+                squid.isCamouflaged = false;
+                squid.camouflageActiveTimer = 0;
+                squid.camouflageReady = false;
+                squid.camouflageTimer = cooldownDuration;
+                delete squid._camoStartTime;
+            }
+        } else if (!squid.camouflageReady && (squid.camouflageTimer > 0 || squid.camouflageTimer === undefined)) {
+            // Update camouflage cooldown
+            const modifier = squid.camouflageModifier || 1.0;
+            if (squid.camouflageTimer === undefined) {
+                squid.camouflageTimer = cooldownDuration;
+            }
+            squid.camouflageTimer -= dtMs * modifier;
+            
             if (squid.camouflageTimer <= 0) {
                 squid.camouflageReady = true;
                 squid.camouflageTimer = 0;
             }
         }
         
-        // Check if camouflage duration has ended
-        if (squid.isCamouflaged && squid.camouflageActiveTimer <= 0) {
-            squid.isCamouflaged = false;
-            squid.camouflageReady = false;
-            squid.camouflageTimer = CONFIG.OCTOPUS_CAMOUFLAGE_COOLDOWN;
-        } else if (squid.isCamouflaged) {
-            squid.camouflageActiveTimer -= deltaTime;
-        }
-        
         return squid;
     }
     
     activateCamouflage(squid) {
-        if (!squid.camouflageReady || squid.isCamouflaged) return false;
+        if (!squid || !squid.camouflageReady || squid.isCamouflaged) return false;
         
         squid.isCamouflaged = true;
-        squid.camouflageActiveTimer = CONFIG.OCTOPUS_CAMOUFLAGE_DURATION;
+        squid.camouflageReady = false;
+        squid.camouflageActiveTimer = CONFIG.OCTOPUS_CAMOUFLAGE_DURATION || 3000;
+        squid.camouflageTimer = 0;
+        squid._camoStartTime = Date.now();
         
         return true;
     }
     
     // Default camouflage modifier (no upgrades)
     applyCamouflageUpgrades(squid) {
+        if (!squid) return squid;
         squid.camouflageModifier = 1.0;
         return squid;
     }
@@ -55,7 +90,7 @@ export class OctopusAbilities {
         
         const isOctopus = creatureOrPresence.skinId === 'octopus' || 
                           (creatureOrPresence.type === 'squid' && creatureOrPresence.skinId === 'octopus');
-        const isCamouflaged = !!creatureOrPresence.isCamouflaged;
+        const isCamouflaged = Boolean(creatureOrPresence.isCamouflaged);
         
         if (isOctopus && isCamouflaged) {
             // 50% chance for incoming attack / damage to not happen (evaded)

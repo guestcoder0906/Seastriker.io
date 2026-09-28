@@ -41,6 +41,7 @@ import { MobileControlsManager } from '../ui/mobileControlsManager.js';
 import { KnifeFishAbilities } from '../systems/knifeFishAbilities.js';
 import { KnifeFishDodgeHandler } from '../systems/knifeFishDodgeHandler.js';
 import { MultiplayerManager } from './multiplayerManager.js';
+import { LeaderboardWidget } from '../ui/leaderboardWidget.js';
 
 class NarwhaleGame {
     constructor() {
@@ -117,6 +118,7 @@ class NarwhaleGame {
         this.knifeFishDodgeHandler = new KnifeFishDodgeHandler(this);
         
         this.mobileControlsManager = new MobileControlsManager(this);
+        this.leaderboardWidget = new LeaderboardWidget(this);
         
         this.interpolatedPresences = {};
         this._lastLeaderboardUpdate = 0;
@@ -753,12 +755,7 @@ class NarwhaleGame {
     }
 
     updateLeaderboard() {
-        const leaderboardEl = document.getElementById('players-list');
-        if (!leaderboardEl) return;
-        leaderboardEl.innerHTML = '';
-        
         const players = [];
-        const isSinglePlayer = this.room.gameMode === 'singleplayer';
         
         if (this.creature) {
             players.push({
@@ -791,32 +788,9 @@ class NarwhaleGame {
         
         players.sort((a, b) => b.kills - a.kills);
         
-        // Show top 10
-        players.slice(0, 10).forEach((player, index) => {
-            const playerEntry = document.createElement('div');
-            playerEntry.className = 'player-entry';
-            
-            const nameEl = document.createElement('div');
-            nameEl.className = 'player-name';
-            nameEl.textContent = `${index + 1}. ${player.name}`;
-            
-            if (player.isLocal) {
-                nameEl.style.fontWeight = 'bold';
-                nameEl.style.color = '#38bdf8';
-            }
-            if (player.isAI) {
-                nameEl.style.fontStyle = 'italic';
-                nameEl.style.opacity = '0.85';
-            }
-            
-            const killsEl = document.createElement('div');
-            killsEl.className = 'player-kills';
-            killsEl.textContent = player.kills;
-            
-            playerEntry.appendChild(nameEl);
-            playerEntry.appendChild(killsEl);
-            leaderboardEl.appendChild(playerEntry);
-        });
+        if (this.leaderboardWidget) {
+            this.leaderboardWidget.update(players);
+        }
     }
 
     getRandomCreatureColor() {

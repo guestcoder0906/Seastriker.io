@@ -14,38 +14,53 @@ export class AIOctopusUpdater {
         if (this.game.octopusAbilities) {
             this.game.octopusAbilities.updateCamouflageStatus(ai.creature, deltaTime);
             this.game.octopusAbilities.applyCamouflageUpgrades(ai.creature);
+            
+            // Check if AI octopus should activate camouflage
+            if (!ai.creature.isCamouflaged && ai.creature.camouflageReady && this.shouldUseCamouflage(ai, aiId)) {
+                this.game.octopusAbilities.activateCamouflage(ai.creature);
+            }
         }
         
-        // Update AI presence with current camouflage status
-        if (ai.creature.isCamouflaged || ai.creature.camouflageTimer > 0 || ai.creature.camouflageReady) {
-            // Check if aiPresences exists before accessing it
-            if (!this.game.aiController.aiPresences) {
-                this.game.aiController.aiPresences = {};
-            }
-            
-            // Initialize the AI presence if it doesn't exist
-            if (!this.game.aiController.aiPresences[aiId]) {
-                this.game.aiController.aiPresences[aiId] = {};
-            }
-            
-            this.game.aiController.aiPresences[aiId].isCamouflaged = ai.creature.isCamouflaged;
-            this.game.aiController.aiPresences[aiId].camouflageReady = ai.creature.camouflageReady;
-            this.game.aiController.aiPresences[aiId].camouflageActiveTimer = ai.creature.camouflageActiveTimer;
-            this.game.aiController.aiPresences[aiId].camouflageTimer = ai.creature.camouflageTimer;
-            
-            // Update game presence
-            if (!this.game.playerPresences) {
-                this.game.playerPresences = {};
-            }
-            this.game.playerPresences[aiId] = this.game.aiController.aiPresences[aiId];
+        const isCamo = Boolean(ai.creature.isCamouflaged);
+        const camoTimer = ai.creature.camouflageTimer || 0;
+        const camoActiveTimer = ai.creature.camouflageActiveTimer || 0;
+        const camoReady = Boolean(ai.creature.camouflageReady);
+        
+        // Check if aiPresences exists before accessing it
+        if (!this.game.aiController.aiPresences) {
+            this.game.aiController.aiPresences = {};
+        }
+        
+        if (!this.game.aiController.aiPresences[aiId]) {
+            this.game.aiController.aiPresences[aiId] = ai.creature.getPresenceData();
+        }
+        
+        // Keep camouflage state strictly synchronized
+        this.game.aiController.aiPresences[aiId].isCamouflaged = isCamo;
+        this.game.aiController.aiPresences[aiId].camouflageReady = camoReady;
+        this.game.aiController.aiPresences[aiId].camouflageActiveTimer = camoActiveTimer;
+        this.game.aiController.aiPresences[aiId].camouflageTimer = camoTimer;
+        
+        // Update game presence
+        if (!this.game.playerPresences) {
+            this.game.playerPresences = {};
+        }
+        if (this.game.playerPresences[aiId]) {
+            this.game.playerPresences[aiId].isCamouflaged = isCamo;
+            this.game.playerPresences[aiId].camouflageActiveTimer = camoActiveTimer;
+        }
+        
+        if (this.game.interpolatedPresences && this.game.interpolatedPresences[aiId]) {
+            this.game.interpolatedPresences[aiId].isCamouflaged = isCamo;
+            this.game.interpolatedPresences[aiId].camouflageActiveTimer = camoActiveTimer;
         }
     }
     
     // Helper to determine if AI should use camouflage
     shouldUseCamouflage(ai, aiId) {
-        if (!ai.creature.camouflageReady) return false;
+        if (!ai.creature || !ai.creature.camouflageReady || ai.creature.isCamouflaged) return false;
         
-        // Check if there are nearby players that might be threats
+        // Check if there are nearby players that might be threats or targets
         for (const clientId in this.game.playerPresences) {
             if (clientId === aiId) continue;
             
@@ -58,7 +73,7 @@ export class AIOctopusUpdater {
             const distance = Math.sqrt(dx * dx + dy * dy);
             
             // If close and potentially threatening, use camouflage
-            if (distance < CONFIG.AI_SIGHT_RANGE * 0.6) {
+            if (distance < CONFIG.AI_SIGHT_RANGE * 0.5) {
                 return true;
             }
         }
