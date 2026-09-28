@@ -4,6 +4,7 @@ import fs from "fs";
 import { createServer as createViteServer } from "vite";
 import { Server } from "socket.io";
 import http from "http";
+import { createClient } from "@supabase/supabase-js";
 
 interface LeaderboardData {
   bestKills: Record<string, number>;
@@ -11,6 +12,22 @@ interface LeaderboardData {
 }
 
 const LEADERBOARD_FILE = path.join(process.cwd(), "data", "leaderboard.json");
+const SUPABASE_URL = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || "https://hguresgswifsjamgypcg.supabase.co";
+const SUPABASE_KEY =
+  process.env.SUPABASE_SECRET_KEY ||
+  process.env.VITE_SUPABASE_SECRET_KEY ||
+  process.env.VITE_SUPABASE_ANON_KEY ||
+  process.env.SUPABASE_ANON_KEY ||
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhndXJlc2dzd2lmc2phbWd5cGNnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA1Mjc1MzksImV4cCI6MjEwNjEwMzUzOX0.B-pFItn9R0R3SIGvACysblN1-Wy6OhrhX27xspAsvtA";
+
+let supabaseClient: any = null;
+try {
+  if (SUPABASE_URL && SUPABASE_KEY) {
+    supabaseClient = createClient(SUPABASE_URL, SUPABASE_KEY);
+  }
+} catch (e) {
+  console.warn("[Server] Supabase client init warning:", e);
+}
 
 const FAKE_PLACEHOLDER_PLAYERS = new Set([
   "apexpredator",
@@ -66,6 +83,37 @@ function loadLeaderboard(): LeaderboardData {
   };
 }
 
+async function syncWithSupabaseDB(leaderboard: LeaderboardData): Promise<LeaderboardData> {
+  if (!supabaseClient) return leaderboard;
+  try {
+    const possibleTables = ["leaderboard", "global_leaderboard", "player_scores", "scores"];
+    for (const tableName of possibleTables) {
+      try {
+        const { data, error } = await supabaseClient.from(tableName).select("*").limit(100);
+        if (!error && Array.isArray(data) && data.length > 0) {
+          for (const row of data) {
+            const username = row.username || row.name || row.player_name;
+            if (!username || FAKE_PLACEHOLDER_PLAYERS.has(String(username).toLowerCase().trim())) continue;
+            const best = Number(row.best_kills ?? row.bestkills ?? row.best_score ?? row.score ?? row.kills ?? 0) || 0;
+            const total = Number(row.total_kills ?? row.totalkills ?? row.total_score ?? row.total ?? 0) || 0;
+            if (best > 0) {
+              leaderboard.bestKills[username] = Math.max(leaderboard.bestKills[username] || 0, best);
+            }
+            if (total > 0) {
+              leaderboard.totalKills[username] = Math.max(leaderboard.totalKills[username] || 0, total);
+            }
+          }
+          saveLeaderboard(leaderboard);
+          break;
+        }
+      } catch (e) {}
+    }
+  } catch (err) {
+    console.warn("[Server] Supabase sync notice:", err);
+  }
+  return leaderboard;
+}
+
 function saveLeaderboard(data: LeaderboardData) {
   try {
     const dir = path.dirname(LEADERBOARD_FILE);
@@ -98,6 +146,11 @@ async function startServer() {
   app.use(express.json());
 
   let leaderboard = loadLeaderboard();
+  syncWithSupabaseDB(leaderboard).then((synced) => {
+    leaderboard = synced;
+    roomState.globalLeaderboard = leaderboard;
+  });
+
   let roomState = { globalLeaderboard: leaderboard };
   let presences: Record<string, any> = {};
   let peers: Record<string, { id: string; username: string }> = {};
@@ -128,11 +181,12 @@ async function startServer() {
     });
   });
 
-  app.get("/api/leaderboard", (req, res) => {
+  app.get("/api/leaderboard", async (req, res) => {
+    leaderboard = await syncWithSupabaseDB(leaderboard);
     res.json(formatLeaderboard(leaderboard));
   });
 
-  app.post("/api/leaderboard", (req, res) => {
+  app.post("/api/leaderboard", async (req, res) => {
     const { username, bestKills, totalKills } = req.body;
     if (!username || typeof username !== "string") {
       res.status(400).json({ error: "Username is required" });
@@ -151,6 +205,21 @@ async function startServer() {
 
     saveLeaderboard(leaderboard);
     roomState.globalLeaderboard = leaderboard;
+
+    if (supabaseClient) {
+      const possibleTables = ["leaderboard", "global_leaderboard", "player_scores", "scores"];
+      for (const tName of possibleTables) {
+        try {
+          await supabaseClient.from(tName).upsert({
+            username: cleanUsername,
+            best_kills: leaderboard.bestKills[cleanUsername],
+            total_kills: leaderboard.totalKills[cleanUsername],
+            updated_at: new Date().toISOString()
+          }, { onConflict: "username" });
+          break;
+        } catch (e) {}
+      }
+    }
 
     const formatted = formatLeaderboard(leaderboard);
     io.emit("leaderboardUpdate", formatted);
@@ -290,6 +359,21 @@ async function startServer() {
 
       saveLeaderboard(leaderboard);
       roomState.globalLeaderboard = leaderboard;
+
+      if (supabaseClient) {
+        const possibleTables = ["leaderboard", "global_leaderboard", "player_scores", "scores"];
+        for (const tName of possibleTables) {
+          try {
+            supabaseClient.from(tName).upsert({
+              username: cleanUsername,
+              best_kills: leaderboard.bestKills[cleanUsername],
+              total_kills: leaderboard.totalKills[cleanUsername],
+              updated_at: new Date().toISOString()
+            }, { onConflict: "username" }).then(() => {}).catch(() => {});
+            break;
+          } catch (e) {}
+        }
+      }
 
       const formatted = formatLeaderboard(leaderboard);
       io.emit("leaderboardUpdate", formatted);

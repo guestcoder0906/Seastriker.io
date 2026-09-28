@@ -773,16 +773,11 @@ class NarwhaleGame {
         for (const clientId in this.playerPresences) {
             if (clientId !== this.room.clientId && (!this.creature || clientId !== this.creature.id)) {
                 const presence = this.playerPresences[clientId];
+                if (!presence || presence.isAlive === false) continue;
+                
                 const isAI = clientId.startsWith('ai-');
-                
-                // In Multiplayer mode, only show real players on the leaderboard
-                // In Single Player mode, show AI bots so the player can compete with them!
-                if (!isSinglePlayer && isAI) {
-                    continue;
-                }
-                
                 const name = this.room.peers[clientId]?.username || 
-                             (isAI ? (presence.name || "AI Predator") : "Unknown Striker");
+                             (isAI ? (presence.name || "Sea Predator") : "Unknown Striker");
                 
                 players.push({
                     id: clientId,

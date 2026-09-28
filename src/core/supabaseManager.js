@@ -113,6 +113,120 @@ export class SupabaseRealtimeManager {
         return Boolean(creds.url && creds.key && creds.url.startsWith('http'));
     }
 
+    getClient() {
+        if (!this.client) {
+            const creds = this.getCredentials();
+            if (creds.url && creds.key) {
+                try {
+                    this.client = createClient(creds.url, creds.key, {
+                        realtime: {
+                            params: {
+                                eventsPerSecond: 50
+                            }
+                        }
+                    });
+                } catch (e) {
+                    console.warn('[Supabase] Client creation warning:', e);
+                }
+            }
+        }
+        return this.client;
+    }
+
+    async fetchGlobalLeaderboardFromSupabase() {
+        const client = this.getClient();
+        if (!client) return null;
+
+        try {
+            // Attempt to query common leaderboard table variations in Supabase
+            const possibleTables = ['leaderboard', 'global_leaderboard', 'player_scores', 'scores', 'players'];
+            for (const tableName of possibleTables) {
+                try {
+                    const { data, error } = await client
+                        .from(tableName)
+                        .select('*')
+                        .limit(100);
+
+                    if (!error && Array.isArray(data) && data.length > 0) {
+                        const bestKills = [];
+                        const totalKills = [];
+
+                        for (const row of data) {
+                            const username = row.username || row.name || row.player_name || row.user_name;
+                            if (!username) continue;
+
+                            const best = Number(row.best_kills ?? row.bestkills ?? row.best_score ?? row.score ?? row.kills ?? 0) || 0;
+                            const total = Number(row.total_kills ?? row.totalkills ?? row.total_score ?? row.total ?? 0) || 0;
+
+                            if (best > 0) {
+                                bestKills.push({ username, score: best });
+                            }
+                            if (total > 0) {
+                                totalKills.push({ username, score: total });
+                            }
+                        }
+
+                        if (bestKills.length > 0 || totalKills.length > 0) {
+                            bestKills.sort((a, b) => b.score - a.score);
+                            totalKills.sort((a, b) => b.score - a.score);
+                            return { bestKills, totalKills };
+                        }
+                    }
+                } catch (tErr) {
+                    // Try next table
+                }
+            }
+        } catch (err) {
+            console.warn('[Supabase] DB leaderboard fetch error:', err);
+        }
+        return null;
+    }
+
+    async saveScoreToSupabase(username, bestKills, totalKills) {
+        if (!username) return false;
+        const cleanUsername = username.trim().substring(0, 24);
+        const bk = Math.max(0, parseInt(bestKills, 10) || 0);
+        const tk = Math.max(0, parseInt(totalKills, 10) || 0);
+
+        const client = this.getClient();
+        if (client) {
+            const possibleTables = ['leaderboard', 'global_leaderboard', 'player_scores', 'scores'];
+            for (const tableName of possibleTables) {
+                try {
+                    const { error } = await client
+                        .from(tableName)
+                        .upsert({
+                            username: cleanUsername,
+                            best_kills: bk,
+                            total_kills: tk,
+                            updated_at: new Date().toISOString()
+                        }, { onConflict: 'username' });
+
+                    if (!error) {
+                        break;
+                    }
+                } catch (e) {
+                    try {
+                        await client.from(tableName).upsert({
+                            username: cleanUsername,
+                            score: bk,
+                            updated_at: new Date().toISOString()
+                        }, { onConflict: 'username' });
+                    } catch (e2) {}
+                }
+            }
+        }
+
+        // Always broadcast in real-time across the ocean to all online players
+        this.sendScoreSubmit({
+            username: cleanUsername,
+            bestKills: bk,
+            totalKills: tk
+        });
+
+        return true;
+    }
+
     onStatusChange(listener) {
         this.statusListeners.push(listener);
         listener(this.connectionStatus, { ping: this.pingMs, peersCount: Object.keys(this.peers).length });

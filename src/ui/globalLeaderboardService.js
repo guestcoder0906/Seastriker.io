@@ -58,49 +58,120 @@ export class GlobalLeaderboardService {
     async fetchGlobalLeaderboard() {
         await this.initialize();
         
-        // 1. Try fetching from server REST API
+        const combined = {
+            bestKills: [],
+            totalKills: []
+        };
+
+        const mergeEntries = (data) => {
+            if (!data) return;
+            if (Array.isArray(data.bestKills)) {
+                for (const item of data.bestKills) {
+                    if (!item || !item.username) continue;
+                    const name = String(item.username).trim();
+                    const score = Number(item.score ?? item.best_kills ?? item.kills ?? 0) || 0;
+                    if (score <= 0) continue;
+                    const existing = combined.bestKills.find(e => e.username.toLowerCase() === name.toLowerCase());
+                    if (existing) {
+                        existing.score = Math.max(existing.score, score);
+                    } else {
+                        combined.bestKills.push({ username: name, score });
+                    }
+                }
+            }
+            if (Array.isArray(data.totalKills)) {
+                for (const item of data.totalKills) {
+                    if (!item || !item.username) continue;
+                    const name = String(item.username).trim();
+                    const score = Number(item.score ?? item.total_kills ?? item.kills ?? 0) || 0;
+                    if (score <= 0) continue;
+                    const existing = combined.totalKills.find(e => e.username.toLowerCase() === name.toLowerCase());
+                    if (existing) {
+                        existing.score = Math.max(existing.score, score);
+                    } else {
+                        combined.totalKills.push({ username: name, score });
+                    }
+                }
+            }
+        };
+
+        // 1. Fetch from Supabase Database (Persistent cloud Postgres for all players)
+        try {
+            if (this.game && this.game.room && this.game.room.supabase) {
+                const supabaseData = await this.game.room.supabase.fetchGlobalLeaderboardFromSupabase();
+                if (supabaseData) {
+                    mergeEntries(supabaseData);
+                }
+            }
+        } catch (err) {
+            console.warn('[Leaderboard] Supabase DB fetch notice:', err);
+        }
+        
+        // 2. Fetch from server REST API
         try {
             const res = await fetch('/api/leaderboard');
             if (res.ok) {
                 const data = await res.json();
-                if (data && Array.isArray(data.bestKills) && Array.isArray(data.totalKills)) {
-                    this.leaderboardCache = data;
-                    try {
-                        localStorage.setItem('cached_global_leaderboard', JSON.stringify(data));
-                    } catch (e) {}
-                    return data;
-                }
+                mergeEntries(data);
             }
         } catch (err) {
-            console.warn('[Leaderboard] API fetch failed, trying fallback:', err);
+            console.warn('[Leaderboard] API fetch notice:', err);
         }
         
-        // 2. Try socket room state
+        // 3. Try socket room state
         if (this.game.room && this.game.room.roomState && this.game.room.roomState.globalLeaderboard) {
             const formatted = this._formatLeaderboardData(this.game.room.roomState.globalLeaderboard);
-            this.leaderboardCache = formatted;
-            return formatted;
+            mergeEntries(formatted);
         }
         
-        // 3. Try localStorage cache
+        // 4. Try localStorage cache
         try {
             const saved = localStorage.getItem('cached_global_leaderboard');
             if (saved) {
                 const parsed = JSON.parse(saved);
-                if (parsed && Array.isArray(parsed.bestKills)) {
-                    this.leaderboardCache = parsed;
-                    return parsed;
-                }
+                mergeEntries(parsed);
             }
         } catch (e) {}
+
+        // 5. Ensure local player's recorded high scores are merged
+        if (this.game && this.game.playerStats) {
+            const stats = this.game.playerStats.getStats();
+            const currentName = (this.game.room && this.game.room.peers && this.game.room.peers[this.game.room.clientId]?.username) || 
+                                (typeof localStorage !== 'undefined' && localStorage.getItem('username'));
+            if (currentName) {
+                if (stats.bestKills > 0) {
+                    const exist = combined.bestKills.find(e => e.username.toLowerCase() === currentName.toLowerCase());
+                    if (exist) {
+                        exist.score = Math.max(exist.score, stats.bestKills);
+                    } else {
+                        combined.bestKills.push({ username: currentName, score: stats.bestKills });
+                    }
+                }
+                if (stats.totalKills > 0) {
+                    const exist = combined.totalKills.find(e => e.username.toLowerCase() === currentName.toLowerCase());
+                    if (exist) {
+                        exist.score = Math.max(exist.score, stats.totalKills);
+                    } else {
+                        combined.totalKills.push({ username: currentName, score: stats.totalKills });
+                    }
+                }
+            }
+        }
         
-        // 4. Empty fallback if offline
-        const fallback = {
-            bestKills: [],
-            totalKills: []
-        };
-        this.leaderboardCache = fallback;
-        return fallback;
+        // Sort descending
+        combined.bestKills.sort((a, b) => b.score - a.score);
+        combined.totalKills.sort((a, b) => b.score - a.score);
+
+        this.leaderboardCache = combined;
+        try {
+            localStorage.setItem('cached_global_leaderboard', JSON.stringify(combined));
+        } catch (e) {}
+
+        if (this.game && this.game.globalLeaderboardManager) {
+            this.game.globalLeaderboardManager.leaderboardData = combined;
+        }
+
+        return combined;
     }
     
     _formatLeaderboardData(leaderboardData) {
@@ -198,9 +269,13 @@ export class GlobalLeaderboardService {
         // Update local cache immediately
         this.mergeScore(payload);
         
-        // 1. Submit via Supabase Realtime broadcast (global internet synchronization)
+        // 1. Submit via Supabase Database & Realtime broadcast (global internet synchronization)
         if (this.game && this.game.room && this.game.room.supabase) {
-            this.game.room.supabase.sendScoreSubmit(payload);
+            try {
+                this.game.room.supabase.saveScoreToSupabase(payload.username, payload.bestKills, payload.totalKills);
+            } catch (supaErr) {
+                console.warn('[Leaderboard] Supabase save warning:', supaErr);
+            }
             if (this.leaderboardCache) {
                 this.game.room.supabase.sendLeaderboardUpdate(this.leaderboardCache);
             }
