@@ -126,12 +126,14 @@ export class GameRenderer {
         
         // Draw other players (skip local player)
         for (const clientId in playerPresences) {
-            if (clientId === this.game.room?.clientId || (narwhal && clientId === narwhal.id)) {
+            const presence = playerPresences[clientId];
+            if (!presence || !presence.isAlive) {
                 continue;
             }
-            if (playerPresences[clientId] && playerPresences[clientId].isAlive) {
-                this.drawCreatureByType(ctx, playerPresences[clientId]);
+            if (this.game.isSelf ? this.game.isSelf(clientId, presence) : (clientId === this.game.room?.clientId || (narwhal && clientId === narwhal.id))) {
+                continue;
             }
+            this.drawCreatureByType(ctx, presence);
         }
         
         // Draw local player if it exists
@@ -145,6 +147,127 @@ export class GameRenderer {
         }
         
         // Restore context state
+        ctx.restore();
+
+        // Draw screen-space multiplayer HUD and kill feed
+        this.drawKillFeed(ctx);
+        this.drawNetworkHUD(ctx);
+    }
+
+    drawKillFeed(ctx) {
+        if (!this.game.killFeed || this.game.killFeed.length === 0) return;
+        const now = performance.now();
+        const duration = 4000;
+
+        ctx.save();
+        ctx.textAlign = 'center';
+        ctx.font = 'bold 14px "Segoe UI", Arial, sans-serif';
+
+        let yOffset = 25;
+        const centerX = ctx.canvas.width / 2;
+
+        for (let i = 0; i < this.game.killFeed.length; i++) {
+            const item = this.game.killFeed[i];
+            const age = now - item.time;
+            if (age > duration) continue;
+
+            const alpha = age > duration - 600 ? Math.max(0, (duration - age) / 600) : 1;
+            ctx.globalAlpha = alpha;
+
+            const text = item.isKiller 
+                ? `🔥 You eliminated ${item.victimName}!` 
+                : item.isVictim 
+                    ? `💀 You were eliminated by ${item.killerName}` 
+                    : `⚔️ ${item.killerName} eliminated ${item.victimName}`;
+
+            const textWidth = ctx.measureText(text).width;
+            const padX = 16;
+            const h = 28;
+
+            ctx.fillStyle = item.isKiller 
+                ? 'rgba(217, 119, 6, 0.9)' 
+                : item.isVictim 
+                    ? 'rgba(220, 38, 38, 0.9)' 
+                    : 'rgba(15, 23, 42, 0.8)';
+            ctx.beginPath();
+            if (typeof ctx.roundRect === 'function') {
+                ctx.roundRect(centerX - textWidth / 2 - padX, yOffset, textWidth + padX * 2, h, 14);
+            } else {
+                ctx.rect(centerX - textWidth / 2 - padX, yOffset, textWidth + padX * 2, h);
+            }
+            ctx.fill();
+
+            ctx.fillStyle = '#ffffff';
+            ctx.fillText(text, centerX, yOffset + 19);
+
+            yOffset += 34;
+        }
+
+        ctx.restore();
+    }
+
+    drawNetworkHUD(ctx) {
+        ctx.save();
+        const isOnline = this.game.room && (this.game.room.isServerConnected || this.game.room.isP2PConnected || this.game.room.isBroadcastActive);
+        const isConnecting = this.game.room && this.game.room.isConnecting && !isOnline;
+        const realCount = this.game.room?.getRealPlayerCount 
+            ? this.game.room.getRealPlayerCount() 
+            : Math.max(1, Object.keys(this.game.room?.peers || {}).filter(id => !id.startsWith('ai-')).length);
+        const botCount = this.game.room?.getAIBotCount ? this.game.room.getAIBotCount() : 6;
+
+        if (!this.game.gameActive) {
+            // Live Preview Watermark Indicator on Menu Background
+            const isAiPreview = this.game.previewMode === 'ai';
+            ctx.font = 'bold 12px "Segoe UI", Arial, sans-serif';
+            ctx.textAlign = 'left';
+            
+            // Badge background
+            ctx.fillStyle = 'rgba(15, 23, 42, 0.75)';
+            const tagText = isAiPreview 
+                ? `🎥 LIVE PREVIEW: PLAY WITH AI (${botCount} Wildlife Bots)` 
+                : `🎥 LIVE PREVIEW: GLOBAL MULTIPLAYER (${realCount} Real Players)`;
+            const textWidth = ctx.measureText(tagText).width;
+            
+            if (typeof ctx.roundRect === 'function') {
+                ctx.beginPath();
+                ctx.roundRect(14, 14, textWidth + 30, 26, 13);
+                ctx.fill();
+            } else {
+                ctx.fillRect(14, 14, textWidth + 30, 26);
+            }
+
+            // Dot
+            ctx.fillStyle = isAiPreview ? '#c084fc' : '#38bdf8';
+            ctx.beginPath();
+            ctx.arc(28, 27, 4.5, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Text
+            ctx.fillStyle = '#ffffff';
+            ctx.fillText(tagText, 38, 31);
+            ctx.restore();
+            return;
+        }
+
+        ctx.font = '12px "Segoe UI", Arial, sans-serif';
+        ctx.fillStyle = isConnecting ? '#f59e0b' : (this.game.gameMode === 'ai' ? '#a855f7' : '#22c55e');
+        ctx.beginPath();
+        ctx.arc(20, 20, 4, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+        ctx.textAlign = 'left';
+        let label = 'Connecting...';
+        if (isConnecting) {
+            label = 'Connecting to Ocean...';
+        } else if (this.game.gameMode === 'ai') {
+            label = `🤖 AI Arena (${botCount} Wildlife Bots)`;
+        } else if (realCount === 1) {
+            label = '🌐 Global Multiplayer (1 Player Online • Real Players Only)';
+        } else {
+            label = `🌐 Global Multiplayer (${realCount} Players Online • Real Players Only)`;
+        }
+        ctx.fillText(label, 30, 24);
         ctx.restore();
     }
 

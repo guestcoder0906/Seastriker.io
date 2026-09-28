@@ -1,0 +1,442 @@
+import { createClient } from '@supabase/supabase-js';
+
+export class SupabaseRealtimeManager {
+    constructor() {
+        this.client = null;
+        this.channel = null;
+        this.clientId = 'player_' + Math.random().toString(36).substring(2, 9);
+        this.username = this.loadInitialUsername();
+        this.currentRoom = 'ocean-global-1';
+        
+        this.connectionStatus = 'disconnected'; // 'disconnected' | 'connecting' | 'connected' | 'error'
+        this.statusListeners = [];
+        this.presenceCallbacks = [];
+        this.presenceRequestCallbacks = [];
+        this.combatCallbacks = [];
+        this.announcementCallbacks = [];
+        
+        this.peers = {};
+        this.remotePresences = {};
+        this.localPresence = null;
+        this.lastBroadcastTime = 0;
+        this.broadcastThrottleMs = 33; // ~30 fps updates for movement
+        
+        this.pingMs = 0;
+        this.lastPingSent = 0;
+        this.pingInterval = null;
+
+        this.cachedCredentials = null;
+        this.peers[this.clientId] = { id: this.clientId, username: this.username };
+    }
+
+    loadInitialUsername() {
+        try {
+            const saved = localStorage.getItem('username');
+            if (saved && saved.trim()) return saved.trim();
+        } catch (e) {}
+        const defaultName = 'Striker_' + Math.floor(100 + Math.random() * 900);
+        try {
+            localStorage.setItem('username', defaultName);
+        } catch (e) {}
+        return defaultName;
+    }
+
+    async getCredentials() {
+        if (this.cachedCredentials) return this.cachedCredentials;
+
+        let url = '';
+        let key = '';
+
+        // 1. Check Vite build-time environment variables
+        if (typeof import.meta !== 'undefined' && import.meta.env) {
+            url = import.meta.env.VITE_SUPABASE_URL || '';
+            key = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+        }
+
+        // 2. If not found in client env, check server proxy endpoint
+        if (!url || !key) {
+            try {
+                const res = await fetch('/api/multiplayer-config');
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.useSupabase && data.supabaseUrl && data.supabaseAnonKey) {
+                        url = data.supabaseUrl;
+                        key = data.supabaseAnonKey;
+                    }
+                }
+            } catch (err) {
+                // Ignore network errors
+            }
+        }
+
+        this.cachedCredentials = {
+            url: url ? url.trim() : '',
+            key: key ? key.trim() : '',
+            roomCode: this.currentRoom
+        };
+
+        return this.cachedCredentials;
+    }
+
+    async hasCredentials() {
+        const creds = await this.getCredentials();
+        return Boolean(creds.url && creds.key && creds.url.startsWith('http'));
+    }
+
+    onStatusChange(listener) {
+        this.statusListeners.push(listener);
+        listener(this.connectionStatus, { ping: this.pingMs, peersCount: Object.keys(this.peers).length });
+    }
+
+    notifyStatus(status, extra = {}) {
+        this.connectionStatus = status;
+        const info = {
+            status,
+            ping: this.pingMs,
+            peersCount: Object.keys(this.peers).length,
+            room: this.currentRoom,
+            ...extra
+        };
+        for (const cb of this.statusListeners) {
+            try {
+                cb(status, info);
+            } catch (err) {
+                console.error('[Supabase] Status listener error:', err);
+            }
+        }
+    }
+
+    async connect(roomCode = null) {
+        if (roomCode) {
+            this.currentRoom = roomCode.trim();
+        }
+
+        const creds = await this.getCredentials();
+        if (!creds.url || !creds.key) {
+            this.notifyStatus('error', { error: 'No Supabase environment variables configured.' });
+            return false;
+        }
+
+        // Clean up any existing connection
+        await this.disconnect();
+
+        this.notifyStatus('connecting');
+
+        try {
+            this.client = createClient(creds.url, creds.key, {
+                realtime: {
+                    params: {
+                        eventsPerSecond: 30
+                    }
+                }
+            });
+
+            const channelName = `ocean-${this.currentRoom}`;
+            this.channel = this.client.channel(channelName, {
+                config: {
+                    presence: { key: this.clientId },
+                    broadcast: { self: false }
+                }
+            });
+
+            this.setupChannelListeners();
+
+            return new Promise((resolve) => {
+                const timer = setTimeout(() => {
+                    if (this.connectionStatus !== 'connected') {
+                        console.warn('[Supabase] Connection timed out');
+                        this.notifyStatus('error', { error: 'Connection timed out' });
+                        resolve(false);
+                    }
+                }, 8000);
+
+                this.channel.subscribe(async (status, err) => {
+                    if (status === 'SUBSCRIBED') {
+                        clearTimeout(timer);
+                        this.notifyStatus('connected');
+                        this.startPingLoop();
+
+                        // Track initial presence
+                        const initialPresence = {
+                            id: this.clientId,
+                            username: this.username,
+                            joinedAt: Date.now(),
+                            isAlive: false
+                        };
+                        try {
+                            await this.channel.track(initialPresence);
+                        } catch (trackErr) {
+                            console.warn('[Supabase] Initial track error:', trackErr);
+                        }
+
+                        // Send peer hello announcement
+                        this.broadcast('peer_hello', {
+                            id: this.clientId,
+                            username: this.username
+                        });
+
+                        resolve(true);
+                    } else if (status === 'CLOSED') {
+                        this.notifyStatus('disconnected');
+                    } else if (status === 'CHANNEL_ERROR') {
+                        clearTimeout(timer);
+                        console.error('[Supabase] Channel error:', err);
+                        this.notifyStatus('error', { error: err?.message || 'Supabase Realtime Channel Error' });
+                        resolve(false);
+                    }
+                });
+            });
+        } catch (err) {
+            console.error('[Supabase] Connect error:', err);
+            this.notifyStatus('error', { error: err.message });
+            return false;
+        }
+    }
+
+    setupChannelListeners() {
+        if (!this.channel) return;
+
+        // 1. Presence Sync
+        this.channel.on('presence', { event: 'sync' }, () => {
+            const state = this.channel.presenceState();
+            const newPeers = {};
+            newPeers[this.clientId] = { id: this.clientId, username: this.username };
+
+            for (const [key, presences] of Object.entries(state)) {
+                if (presences && presences.length > 0) {
+                    const latest = presences[presences.length - 1];
+                    newPeers[key] = {
+                        id: key,
+                        username: latest.username || latest.name || ('Player_' + key.substring(0, 4))
+                    };
+                    if (key !== this.clientId && latest.segments) {
+                        this.remotePresences[key] = latest;
+                    }
+                }
+            }
+
+            this.peers = newPeers;
+            this.notifyPresenceUpdate();
+            this.notifyStatus(this.connectionStatus);
+        });
+
+        // 2. Presence Join
+        this.channel.on('presence', { event: 'join' }, ({ key, newPresences }) => {
+            if (newPresences && newPresences.length > 0) {
+                const latest = newPresences[newPresences.length - 1];
+                this.peers[key] = {
+                    id: key,
+                    username: latest.username || latest.name || ('Player_' + key.substring(0, 4))
+                };
+                if (key !== this.clientId && latest.segments) {
+                    this.remotePresences[key] = latest;
+                }
+                this.notifyAnnouncement({
+                    type: 'join',
+                    username: this.peers[key].username
+                });
+                this.notifyPresenceUpdate();
+            }
+        });
+
+        // 3. Presence Leave
+        this.channel.on('presence', { event: 'leave' }, ({ key }) => {
+            const leavingUser = this.peers[key]?.username;
+            delete this.peers[key];
+            delete this.remotePresences[key];
+            if (leavingUser) {
+                this.notifyAnnouncement({
+                    type: 'leave',
+                    username: leavingUser
+                });
+            }
+            this.notifyPresenceUpdate();
+        });
+
+        // 4. Broadcast: Fast Position / Creature Update
+        this.channel.on('broadcast', { event: 'pos' }, ({ payload }) => {
+            if (!payload || !payload.id || payload.id === this.clientId) return;
+            this.remotePresences[payload.id] = payload;
+            if (payload.name && !this.peers[payload.id]) {
+                this.peers[payload.id] = { id: payload.id, username: payload.name };
+            }
+            this.notifyPresenceUpdate();
+        });
+
+        // 5. Broadcast: Combat Request / Damage / Hits
+        this.channel.on('broadcast', { event: 'combat_action' }, ({ payload }) => {
+            if (!payload) return;
+            if (payload.targetId === this.clientId) {
+                for (const cb of this.presenceRequestCallbacks) {
+                    cb(payload.updateRequest, payload.fromClientId);
+                }
+            }
+            for (const cb of this.combatCallbacks) {
+                cb(payload);
+            }
+        });
+
+        // 6. Broadcast: Ink Clouds
+        this.channel.on('broadcast', { event: 'ink_cloud' }, ({ payload }) => {
+            if (!payload || payload.senderId === this.clientId) return;
+            if (typeof window !== 'undefined' && window.game && window.game.inkSystem) {
+                window.game.inkSystem.addRemoteInkCloud(payload.cloud);
+            }
+        });
+
+        // 7. Broadcast: Announcements / Kill Feed
+        this.channel.on('broadcast', { event: 'kill_announcement' }, ({ payload }) => {
+            if (payload) {
+                this.notifyAnnouncement(payload);
+            }
+        });
+
+        // 8. Broadcast: Heartbeat Ping / Pong
+        this.channel.on('broadcast', { event: 'ping' }, ({ payload }) => {
+            if (payload && payload.senderId !== this.clientId) {
+                this.channel.send({
+                    type: 'broadcast',
+                    event: 'pong',
+                    payload: { targetId: payload.senderId, t: payload.t }
+                }).catch(() => {});
+            }
+        });
+
+        this.channel.on('broadcast', { event: 'pong' }, ({ payload }) => {
+            if (payload && payload.targetId === this.clientId && payload.t) {
+                this.pingMs = Math.max(1, Math.round(performance.now() - payload.t));
+                this.notifyStatus(this.connectionStatus);
+            }
+        });
+    }
+
+    startPingLoop() {
+        if (this.pingInterval) clearInterval(this.pingInterval);
+        this.pingInterval = setInterval(() => {
+            if (this.channel && this.connectionStatus === 'connected') {
+                this.lastPingSent = performance.now();
+                this.channel.send({
+                    type: 'broadcast',
+                    event: 'ping',
+                    payload: { senderId: this.clientId, t: this.lastPingSent }
+                }).catch(() => {});
+            }
+        }, 5000);
+    }
+
+    async disconnect() {
+        if (this.pingInterval) {
+            clearInterval(this.pingInterval);
+            this.pingInterval = null;
+        }
+
+        if (this.channel) {
+            try {
+                await this.channel.untrack();
+            } catch (e) {}
+            try {
+                this.client?.removeChannel(this.channel);
+            } catch (e) {}
+            this.channel = null;
+        }
+
+        this.client = null;
+        this.remotePresences = {};
+        this.peers = { [this.clientId]: { id: this.clientId, username: this.username } };
+        this.notifyStatus('disconnected');
+    }
+
+    broadcast(event, payload) {
+        if (!this.channel || this.connectionStatus !== 'connected') return;
+        this.channel.send({
+            type: 'broadcast',
+            event,
+            payload
+        }).catch(() => {});
+    }
+
+    sendPresenceUpdate(presenceData) {
+        if (!presenceData) return;
+        this.localPresence = presenceData;
+
+        const now = performance.now();
+        if (now - this.lastBroadcastTime >= this.broadcastThrottleMs) {
+            this.lastBroadcastTime = now;
+            this.broadcast('pos', presenceData);
+        }
+    }
+
+    sendCombatRequest(targetId, updateRequest) {
+        this.broadcast('combat_action', {
+            targetId,
+            updateRequest,
+            fromClientId: this.clientId
+        });
+    }
+
+    sendInkCloud(cloud) {
+        this.broadcast('ink_cloud', {
+            senderId: this.clientId,
+            cloud
+        });
+    }
+
+    sendKillAnnouncement(killerName, victimName) {
+        this.broadcast('kill_announcement', {
+            type: 'kill',
+            killer: killerName,
+            victim: victimName,
+            time: Date.now()
+        });
+    }
+
+    notifyPresenceUpdate() {
+        const combined = { ...this.remotePresences };
+        if (this.localPresence) {
+            combined[this.clientId] = this.localPresence;
+        }
+        for (const cb of this.presenceCallbacks) {
+            cb(combined);
+        }
+    }
+
+    notifyAnnouncement(data) {
+        for (const cb of this.announcementCallbacks) {
+            cb(data);
+        }
+    }
+
+    subscribePresence(callback) {
+        this.presenceCallbacks.push(callback);
+    }
+
+    subscribePresenceUpdateRequests(callback) {
+        this.presenceRequestCallbacks.push(callback);
+    }
+
+    subscribeCombat(callback) {
+        this.combatCallbacks.push(callback);
+    }
+
+    subscribeAnnouncements(callback) {
+        this.announcementCallbacks.push(callback);
+    }
+
+    setUsername(newUsername) {
+        if (!newUsername || !newUsername.trim()) return;
+        this.username = newUsername.trim().substring(0, 16);
+        try {
+            localStorage.setItem('username', this.username);
+        } catch (e) {}
+
+        this.peers[this.clientId] = { id: this.clientId, username: this.username };
+
+        if (this.channel && this.connectionStatus === 'connected') {
+            this.channel.track({
+                id: this.clientId,
+                username: this.username,
+                isAlive: this.localPresence ? this.localPresence.isAlive : false
+            }).catch(() => {});
+        }
+    }
+}

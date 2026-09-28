@@ -92,23 +92,108 @@ export class SquidRenderer {
         ctx.restore();
     }
 
+    ensureTentacles(squid) {
+        if (!squid.segments || !squid.segments[0]) return null;
+        const head = squid.segments[0];
+        const numTentacles = 4;
+        const numSegments = 5;
+        const headScale = head.scale || 1.33;
+        const headWidth = CONFIG.SEGMENT_SIZE * headScale * 1.0;
+        const headHeight = CONFIG.SEGMENT_SIZE * headScale * 1.5;
+        const tentacleLength = CONFIG.TENTACLE_LENGTH * 1.85;
+
+        // Base anchor at rear edge of rectangular head
+        const backX = head.x - Math.cos(head.angle) * (headHeight * 0.45);
+        const backY = head.y - Math.sin(head.angle) * (headHeight * 0.45);
+        const perpX = Math.cos(head.angle + Math.PI / 2);
+        const perpY = Math.sin(head.angle + Math.PI / 2);
+
+        const time = performance.now() * 0.001;
+        const isDashing = !!squid.isDashing;
+        const waveSpeed = isDashing ? 11 : 6.5;
+        const waveAmp = isDashing ? 0.2 : 0.35;
+        const segmentDist = tentacleLength / (numSegments - 1);
+
+        if (!squid.tentacles || !Array.isArray(squid.tentacles) || squid.tentacles.length !== numTentacles) {
+            squid.tentacles = [];
+        }
+
+        for (let t = 0; t < numTentacles; t++) {
+            const fraction = numTentacles > 1 ? t / (numTentacles - 1) : 0.5;
+            const spread = (fraction - 0.5) * headWidth * 0.82;
+            const startX = backX + perpX * spread;
+            const startY = backY + perpY * spread;
+            const tentaclePhase = t * 0.78;
+
+            if (!squid.tentacles[t] || !Array.isArray(squid.tentacles[t]) || squid.tentacles[t].length !== numSegments) {
+                squid.tentacles[t] = [];
+                for (let s = 0; s < numSegments; s++) {
+                    squid.tentacles[t].push({
+                        x: startX - Math.cos(head.angle) * (s * segmentDist),
+                        y: startY - Math.sin(head.angle) * (s * segmentDist),
+                        angle: head.angle + Math.PI
+                    });
+                }
+            }
+
+            const tSegs = squid.tentacles[t];
+            tSegs[0].x = startX;
+            tSegs[0].y = startY;
+            tSegs[0].angle = head.angle + Math.PI;
+
+            for (let s = 1; s < numSegments; s++) {
+                const prev = tSegs[s - 1];
+                const cur = tSegs[s];
+                const wave = Math.sin(time * waveSpeed - s * 0.85 + tentaclePhase) * waveAmp;
+                const targetAngle = head.angle + Math.PI + wave;
+
+                const targetX = prev.x + Math.cos(targetAngle) * segmentDist;
+                const targetY = prev.y + Math.sin(targetAngle) * segmentDist;
+
+                if (isNaN(cur.x) || isNaN(cur.y)) {
+                    cur.x = targetX;
+                    cur.y = targetY;
+                } else {
+                    cur.x += (targetX - cur.x) * 0.48;
+                    cur.y += (targetY - cur.y) * 0.48;
+                }
+                cur.angle = targetAngle;
+            }
+        }
+
+        return squid.tentacles;
+    }
+
     drawTentacles(ctx, squid) {
-        const tentacles = squid.tentacles;
+        let tentacles = squid.tentacles;
+        if (!tentacles || !Array.isArray(tentacles) || tentacles.length === 0 || !tentacles[0] || !tentacles[0][0] || isNaN(tentacles[0][0].x)) {
+            tentacles = this.ensureTentacles(squid);
+        } else {
+            // Continuously drive wave kinematics for non-local creatures (AI & peers)
+            if (!squid.isLocalPlayer && squid.id !== this.game?.room?.clientId) {
+                tentacles = this.ensureTentacles(squid);
+            }
+        }
         if (!tentacles || tentacles.length === 0) return;
 
         ctx.save();
-        ctx.strokeStyle = squid.color; // Tentacle color same as body
-        ctx.lineWidth = CONFIG.TENTACLE_THICKNESS; // Tentacle thickness
-        ctx.lineCap = 'round'; // Rounded tentacle endings
+        ctx.strokeStyle = squid.color || '#ec4899';
+        ctx.lineWidth = CONFIG.TENTACLE_THICKNESS || 3.5;
+        ctx.lineCap = 'round';
 
-        tentacles.forEach(tentacleSegments => {
+        for (let t = 0; t < tentacles.length; t++) {
+            const tentacleSegments = tentacles[t];
+            if (!tentacleSegments || tentacleSegments.length < 2) continue;
             ctx.beginPath();
             ctx.moveTo(tentacleSegments[0].x, tentacleSegments[0].y);
             for (let i = 1; i < tentacleSegments.length; i++) {
-                ctx.lineTo(tentacleSegments[i].x, tentacleSegments[i].y);
+                const seg = tentacleSegments[i];
+                if (seg && !isNaN(seg.x) && !isNaN(seg.y)) {
+                    ctx.lineTo(seg.x, seg.y);
+                }
             }
             ctx.stroke();
-        });
+        }
 
         ctx.restore();
     }

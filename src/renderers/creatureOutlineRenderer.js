@@ -141,12 +141,17 @@ export class CreatureOutlineRenderer {
             ctx.lineTo(segment.x, segment.y);
         }
         
-        // Draw tentacles
-        for (let i = 0; i < creature.tentacles.length; i++) {
-            const tentacle = creature.tentacles[i];
-            ctx.moveTo(tentacle[0].x, tentacle[0].y);
-            for (let j = 0; j < tentacle.length; j++) {
-                ctx.lineTo(tentacle[j].x, tentacle[j].y);
+        // Draw tentacles safely
+        if (creature.tentacles && Array.isArray(creature.tentacles)) {
+            for (let i = 0; i < creature.tentacles.length; i++) {
+                const tentacle = creature.tentacles[i];
+                if (!tentacle || !tentacle.length || !tentacle[0]) continue;
+                ctx.moveTo(tentacle[0].x, tentacle[0].y);
+                for (let j = 1; j < tentacle.length; j++) {
+                    if (tentacle[j]) {
+                        ctx.lineTo(tentacle[j].x, tentacle[j].y);
+                    }
+                }
             }
         }
         

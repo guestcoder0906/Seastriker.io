@@ -7,47 +7,13 @@ export class SpecialSkinAccess {
     }
     
     async initialize() {
-        if (this.initialized) return;
-        
-        // Wait for game room to be initialized and user data to be available
-        if (!this.game.room || !this.game.room.peers || !this.game.room.clientId) {
-            setTimeout(() => this.initialize(), 500);
-            return;
-        }
-        
-        const username = this.game.room.peers[this.game.room.clientId]?.username;
-        
-        // Check if the current user is in the special users list
-        if (username && this.specialUsernames.includes(username.toLowerCase())) {
-            this.createUnlockAllButton();
-        }
-        
+        // All creatures and skins are freely accessible to all players by default.
+        // No unlock button is needed.
         this.initialized = true;
     }
     
     createUnlockAllButton() {
-        // Create the unlock all button
-        this.unlockAllButton = document.createElement('button');
-        this.unlockAllButton.id = 'unlock-all-button';
-        this.unlockAllButton.textContent = 'UNLOCK ALL SKINS';
-        this.unlockAllButton.style.position = 'absolute';
-        this.unlockAllButton.style.top = '10px';
-        this.unlockAllButton.style.left = '10px';
-        this.unlockAllButton.style.zIndex = '100';
-        this.unlockAllButton.style.backgroundColor = '#ff00ff';
-        this.unlockAllButton.style.color = 'white';
-        this.unlockAllButton.style.border = 'none';
-        this.unlockAllButton.style.padding = '8px 15px';
-        this.unlockAllButton.style.borderRadius = '5px';
-        this.unlockAllButton.style.cursor = 'pointer';
-        
-        // Add click handler
-        this.unlockAllButton.addEventListener('click', () => {
-            this.toggleAllSkins();
-        });
-        
-        // Add to game container
-        document.getElementById('game-container').appendChild(this.unlockAllButton);
+        // No-op: all players already have access to all creatures and skins
     }
     
     toggleAllSkins() {
@@ -75,8 +41,10 @@ export class SpecialSkinAccess {
         // Save the changes
         this.game.skinSystem.saveSkinData();
         
-        // Update button text
-        this.unlockAllButton.textContent = allUnlocked ? 'UNLOCK ALL SKINS' : 'RESET TO DEFAULT';
+        // Update button text if present
+        if (this.unlockAllButton) {
+            this.unlockAllButton.textContent = allUnlocked ? 'UNLOCK ALL SKINS' : 'RESET TO DEFAULT';
+        }
         
         // If the skins screen is visible, update it
         if (this.game.skinsScreen && this.game.skinsScreen.visible) {
@@ -89,7 +57,9 @@ export class SpecialSkinAccess {
         
         // Check if all skins are already unlocked
         for (const creatureType in this.game.skinSystem.skins) {
-            for (const skin of this.game.skinSystem.skins[creatureType]) {
+            const list = this.game.skinSystem.skins[creatureType];
+            if (!Array.isArray(list)) continue;
+            for (const skin of list) {
                 if (skin.id !== 'default' && !skin.unlocked) {
                     return false; // Found at least one locked skin
                 }

@@ -153,6 +153,50 @@ export class PlayerController {
         }
     }
     
+    dispatchAttackToTarget(clientId, damage, hitType, isLethal, angle, knockbackForce = 6) {
+        if (!clientId || clientId === this.game.room?.clientId || (this.game.creature && clientId === this.game.creature.id)) {
+            return;
+        }
+
+        const isAITarget = clientId.startsWith('ai-');
+        if (isAITarget) {
+            if (this.game.room && typeof this.game.room.attackBot === 'function') {
+                this.game.room.attackBot(clientId, damage, hitType, angle);
+            }
+            const aiPlayer = this.game.aiController?.aiPlayers?.[clientId];
+            if (aiPlayer) {
+                const killed = this.game.aiHealthSystem.processAIDamage(
+                    aiPlayer,
+                    isLethal ? 'lethal' : hitType,
+                    damage,
+                    this.game.creature.id
+                );
+                if (killed) {
+                    this.game.creature.kills++;
+                }
+            }
+        } else {
+            if (this.game.room && typeof this.game.room.attackPlayer === 'function') {
+                this.game.room.attackPlayer(clientId, damage, hitType, angle, knockbackForce);
+            }
+            if (this.game.room && typeof this.game.room.requestPresenceUpdate === 'function') {
+                this.game.room.requestPresenceUpdate(clientId, {
+                    type: isLethal ? 'collision' : 'bodyHit',
+                    hitType: hitType,
+                    damageAmount: damage,
+                    killed: isLethal,
+                    knockbackAngle: angle,
+                    knockbackForce
+                });
+            }
+        }
+
+        this.game.room.updatePresence({
+            ...this.game.creature.getPresenceData(),
+            kills: this.game.creature.kills
+        });
+    }
+
     checkNarwhalCollisions() {
         // Check tusk collisions using the collision helper
         const collisionResult = this.game.narwhalCollisions.checkTuskNarwhalCollisions(
@@ -162,12 +206,12 @@ export class PlayerController {
         
         if (collisionResult) {
             const clientId = collisionResult.clientId;
-            if (clientId === this.game.room?.clientId || (this.game.creature && clientId === this.game.creature.id)) {
+            const targetPresence = this.game.playerPresences[clientId];
+            if (this.game.isSelf ? this.game.isSelf(clientId, targetPresence) : (clientId === this.game.room?.clientId || (this.game.creature && clientId === this.game.creature.id))) {
                 return;
             }
             
             // Cannot attack creatures hiding inside coral reefs since they are protected
-            const targetPresence = this.game.playerPresences[clientId];
             if (targetPresence && (targetPresence.isHiddenInReef || (this.game.coralReefSystem && this.game.coralReefSystem.isCreatureProtectedInReef(targetPresence)))) {
                 return;
             }
@@ -177,11 +221,7 @@ export class PlayerController {
                 return;
             }
 
-            // Check if target is an AI player
-            const isAITarget = clientId.startsWith('ai-');
-            
             if (collisionResult.type === 'tuskToTusk') {
-                // Tusk-to-tusk collision
                 if (this.game.room && typeof this.game.room.requestPresenceUpdate === 'function') {
                     this.game.room.requestPresenceUpdate(clientId, {
                         type: 'tuskCollision',
@@ -189,62 +229,24 @@ export class PlayerController {
                         knockbackForce: collisionResult.knockbackForce
                     });
                 }
-            }
-            else if (collisionResult.type === 'lethal') {
-                // We killed another player or AI
-                this.game.creature.kills++;
-                
-                if (isAITarget) {
-                    // Handle AI damage directly
-                    const aiPlayer = this.game.aiController.aiPlayers[clientId];
-                    if (aiPlayer) {
-                        const killed = this.game.aiHealthSystem.processAIDamage(
-                            aiPlayer, 
-                            'lethal',
-                            collisionResult.damage, 
-                            this.game.creature.id
-                        );
-                    }
-                } else {
-                    // Request the other player to update their presence
-                    this.game.room.requestPresenceUpdate(clientId, {
-                        type: 'collision',
-                        killed: true,
-                        hitType: 'lethal',
-                        damageAmount: collisionResult.damage,
-                        segmentIndex: collisionResult.segment
-                    });
-                }
-                
-                // Update our presence with new kill count
-                this.game.room.updatePresence({
-                    ...this.game.creature.getPresenceData(),
-                    kills: this.game.creature.kills
-                });
-            }
-            else {
-                // Non-lethal hit
-                if (isAITarget) {
-                    // Handle AI damage directly
-                    const aiPlayer = this.game.aiController.aiPlayers[clientId];
-                    if (aiPlayer) {
-                        this.game.aiHealthSystem.processAIDamage(
-                            aiPlayer, 
-                            collisionResult.type,
-                            collisionResult.damage, 
-                            this.game.creature.id
-                        );
-                    }
-                } else {
-                    // Human player hit
-                    this.game.room.requestPresenceUpdate(clientId, {
-                        type: 'bodyHit',
-                        hitType: collisionResult.type,
-                        damageAmount: collisionResult.damage,
-                        knockbackAngle: this.game.creature.rotationAngle,
-                        knockbackForce: Math.min(10, this.game.creature.velocity.x**2 + this.game.creature.velocity.y**2) / 2
-                    });
-                }
+            } else if (collisionResult.type === 'lethal') {
+                this.dispatchAttackToTarget(
+                    clientId,
+                    collisionResult.damage,
+                    'lethal',
+                    true,
+                    this.game.creature.rotationAngle,
+                    8
+                );
+            } else {
+                this.dispatchAttackToTarget(
+                    clientId,
+                    collisionResult.damage,
+                    collisionResult.type,
+                    false,
+                    this.game.creature.rotationAngle,
+                    Math.min(8, (this.game.creature.velocity.x**2 + this.game.creature.velocity.y**2) / 2)
+                );
             }
         }
     }
@@ -255,12 +257,12 @@ export class PlayerController {
         
         if (collisionResult && typeof collisionResult === 'object') {
             const clientId = collisionResult.clientId;
-            if (clientId === this.game.room?.clientId || (this.game.creature && clientId === this.game.creature.id)) {
+            const targetPresence = this.game.playerPresences[clientId];
+            if (this.game.isSelf ? this.game.isSelf(clientId, targetPresence) : (clientId === this.game.room?.clientId || (this.game.creature && clientId === this.game.creature.id))) {
                 return;
             }
             
             // Cannot attack creatures hiding inside coral reefs since they are protected
-            const targetPresence = this.game.playerPresences[clientId];
             if (targetPresence && (targetPresence.isHiddenInReef || (this.game.coralReefSystem && this.game.coralReefSystem.isCreatureProtectedInReef(targetPresence)))) {
                 return;
             }
@@ -270,84 +272,24 @@ export class PlayerController {
                 return;
             }
 
-            // Check if target is an AI player
-            const isAITarget = clientId.startsWith('ai-');
-            
             if (collisionResult.type === 'lethal') {
-                // We killed another player or AI
-                this.game.creature.kills++;
-                
-                if (isAITarget) {
-                    // Handle AI damage directly
-                    const aiPlayer = this.game.aiController.aiPlayers[clientId];
-                    if (aiPlayer) {
-                        const killed = this.game.aiHealthSystem.processAIDamage(
-                            aiPlayer, 
-                            'lethal',
-                            collisionResult.damage, 
-                            this.game.creature.id
-                        );
-                        
-                        if (killed) {
-                            if (!this.game._processedKills) this.game._processedKills = {};
-                            this.game._processedKills[clientId] = true;
-                            this.game.creature.kills++;
-                        }
-                    }
-                } else {
-                    // Request the other player to update their presence
-                    if (this.game.room && typeof this.game.room.requestPresenceUpdate === 'function') {
-                        this.game.room.requestPresenceUpdate(clientId, {
-                            type: 'collision',
-                            killed: true,
-                            hitType: 'lethal',
-                            damageAmount: collisionResult.damage
-                        });
-                    }
-                }
-                
-                // Update our presence with new kill count
-                this.game.room.updatePresence({
-                    ...this.game.creature.getPresenceData(),
-                    kills: this.game.creature.kills
-                });
-            }
-            else {
-                // Non-lethal hit (headHit or bodyHit) - sharks deal damage even when not boosting
-                if (isAITarget) {
-                    // Handle AI damage directly
-                    const aiPlayer = this.game.aiController.aiPlayers[clientId];
-                    if (aiPlayer) {
-                        const aiUpgrades = {...aiPlayer.creature.upgrades};
-                        const killed = this.game.aiHealthSystem.processAIDamage(
-                            aiPlayer, 
-                            collisionResult.type,
-                            collisionResult.damage, 
-                            this.game.creature.id
-                        );
-                        
-                        if (killed) {
-                            if (!this.game._processedKills) this.game._processedKills = {};
-                            this.game._processedKills[clientId] = true;
-                            this.game.creature.kills++;
-                            this.game.room.updatePresence({
-                                ...this.game.creature.getPresenceData(),
-                                kills: this.game.creature.kills
-                            });
-                        }
-                    }
-                } else {
-                    // Human player hit
-                    if (this.game.room && typeof this.game.room.requestPresenceUpdate === 'function') {
-                        this.game.room.requestPresenceUpdate(clientId, {
-                            type: 'bodyHit',
-                            hitType: collisionResult.type,
-                            damageAmount: collisionResult.damage,
-                            knockbackAngle: this.game.creature.rotationAngle,
-                            knockbackForce: Math.min(10, this.game.creature.velocity.x**2 + this.game.creature.velocity.y**2) / 2
-                        });
-                    }
-                }
+                this.dispatchAttackToTarget(
+                    clientId,
+                    collisionResult.damage,
+                    'lethal',
+                    true,
+                    this.game.creature.rotationAngle,
+                    8
+                );
+            } else {
+                this.dispatchAttackToTarget(
+                    clientId,
+                    collisionResult.damage,
+                    collisionResult.type,
+                    false,
+                    this.game.creature.rotationAngle,
+                    Math.min(8, (this.game.creature.velocity.x**2 + this.game.creature.velocity.y**2) / 2)
+                );
             }
         }
     }
@@ -358,12 +300,12 @@ export class PlayerController {
         
         if (collisionResult && typeof collisionResult === 'object') {
             const clientId = collisionResult.clientId;
-            if (clientId === this.game.room?.clientId || (this.game.creature && clientId === this.game.creature.id)) {
+            const targetPresence = this.game.playerPresences[clientId];
+            if (this.game.isSelf ? this.game.isSelf(clientId, targetPresence) : (clientId === this.game.room?.clientId || (this.game.creature && clientId === this.game.creature.id))) {
                 return;
             }
             
             // Cannot attack creatures hiding inside coral reefs since they are protected
-            const targetPresence = this.game.playerPresences[clientId];
             if (targetPresence && (targetPresence.isHiddenInReef || (this.game.coralReefSystem && this.game.coralReefSystem.isCreatureProtectedInReef(targetPresence)))) {
                 return;
             }
@@ -373,79 +315,24 @@ export class PlayerController {
                 return;
             }
 
-            // Check if target is an AI player
-            const isAITarget = clientId.startsWith('ai-');
-            
             if (collisionResult.type === 'lethal') {
-                // We killed another player or AI
-                this.game.creature.kills++;
-                
-                if (isAITarget) {
-                    // Handle AI damage directly
-                    const aiPlayer = this.game.aiController.aiPlayers[clientId];
-                    if (aiPlayer) {
-                        // Store upgrades before processing damage
-                        const aiUpgrades = {...aiPlayer.creature.upgrades};
-                        
-                        const killed = this.game.aiHealthSystem.processAIDamage(
-                            aiPlayer, 
-                            'lethal',
-                            collisionResult.damage, 
-                            this.game.creature.id
-                        );
-                        
-                        if (killed) {
-                            if (!this.game._processedKills) this.game._processedKills = {};
-                            this.game._processedKills[clientId] = true;
-                            this.game.creature.kills++;
-                        }
-                    }
-                } else {
-                    // Request the other player to update their presence
-                    if (this.game.room && typeof this.game.room.requestPresenceUpdate === 'function') {
-                        this.game.room.requestPresenceUpdate(clientId, {
-                            type: 'collision',
-                            killed: true,
-                            hitType: 'lethal',
-                            damageAmount: collisionResult.damage
-                        });
-                    }
-                }
-                
-                // Update our presence with new kill count
-                this.game.room.updatePresence({
-                    ...this.game.creature.getPresenceData(),
-                    kills: this.game.creature.kills
-                });
-            }
-            else {
-                // Non-lethal hit (headHit or bodyHit)
-                if (isAITarget) {
-                    // Handle AI damage directly
-                    const aiPlayer = this.game.aiController.aiPlayers[clientId];
-                    if (aiPlayer) {
-                        const killed = this.game.aiHealthSystem.processAIDamage(
-                            aiPlayer, 
-                            collisionResult.type,
-                            collisionResult.damage, 
-                            this.game.creature.id
-                        );
-                        if (killed) {
-                            this.game.creature.kills++;
-                        }
-                    }
-                } else {
-                    // Human player hit
-                    if (this.game.room && typeof this.game.room.requestPresenceUpdate === 'function') {
-                        this.game.room.requestPresenceUpdate(clientId, {
-                            type: 'bodyHit',
-                            hitType: collisionResult.type,
-                            damageAmount: collisionResult.damage,
-                            knockbackAngle: this.game.creature.rotationAngle,
-                            knockbackForce: Math.min(8, this.game.creature.velocity.x**2 + this.game.creature.velocity.y**2) / 2
-                        });
-                    }
-                }
+                this.dispatchAttackToTarget(
+                    clientId,
+                    collisionResult.damage,
+                    'lethal',
+                    true,
+                    this.game.creature.rotationAngle,
+                    8
+                );
+            } else {
+                this.dispatchAttackToTarget(
+                    clientId,
+                    collisionResult.damage,
+                    collisionResult.type,
+                    false,
+                    this.game.creature.rotationAngle,
+                    Math.min(8, (this.game.creature.velocity.x**2 + this.game.creature.velocity.y**2) / 2)
+                );
             }
         }
     }
@@ -456,10 +343,10 @@ export class PlayerController {
         
         if (collisionResult && typeof collisionResult === 'object') {
             const clientId = collisionResult.clientId;
-            if (clientId === this.game.room?.clientId || (this.game.creature && clientId === this.game.creature.id)) {
+            const targetPresence = this.game.playerPresences[clientId];
+            if (this.game.isSelf ? this.game.isSelf(clientId, targetPresence) : (clientId === this.game.room?.clientId || (this.game.creature && clientId === this.game.creature.id))) {
                 return;
             }
-            const targetPresence = this.game.playerPresences[clientId];
             if (targetPresence && (targetPresence.isHiddenInReef || (this.game.coralReefSystem && this.game.coralReefSystem.isCreatureProtectedInReef(targetPresence)))) {
                 return;
             }
@@ -469,89 +356,33 @@ export class PlayerController {
                 return;
             }
 
-            const isAITarget = clientId.startsWith('ai-');
-
             if (collisionResult.type === 'lethal') {
-                this.game.creature.kills++;
-                if (isAITarget) {
-                    const aiPlayer = this.game.aiController.aiPlayers[clientId];
-                    if (aiPlayer) {
-                        this.game.aiHealthSystem.processAIDamage(
-                            aiPlayer, 
-                            'lethal',
-                            collisionResult.damage, 
-                            this.game.creature.id
-                        );
-                    }
-                } else {
-                    if (this.game.room && typeof this.game.room.requestPresenceUpdate === 'function') {
-                        this.game.room.requestPresenceUpdate(clientId, {
-                            type: 'collision',
-                            killed: true,
-                            hitType: 'lethal',
-                            damageAmount: collisionResult.damage
-                        });
-                    }
-                }
-
-                this.game.room.updatePresence({
-                    ...this.game.creature.getPresenceData(),
-                    kills: this.game.creature.kills
-                });
+                this.dispatchAttackToTarget(
+                    clientId,
+                    collisionResult.damage,
+                    'lethal',
+                    true,
+                    this.game.creature.rotationAngle,
+                    8
+                );
             } else if (collisionResult.type === 'tailSnap') {
-                if (isAITarget) {
-                    const aiPlayer = this.game.aiController.aiPlayers[clientId];
-                    if (aiPlayer) {
-                        const killed = this.game.aiHealthSystem.processAIDamage(
-                            aiPlayer,
-                            'tailSnap',
-                            collisionResult.damage,
-                            this.game.creature.id
-                        );
-                        if (killed) {
-                            this.game.creature.kills++;
-                        }
-                        const knockbackAngle = collisionResult.fromAngle || this.game.creature.rotationAngle;
-                        aiPlayer.creature.velocity.x += Math.cos(knockbackAngle) * 8;
-                        aiPlayer.creature.velocity.y += Math.sin(knockbackAngle) * 8;
-                    }
-                } else {
-                    if (this.game.room && typeof this.game.room.requestPresenceUpdate === 'function') {
-                        this.game.room.requestPresenceUpdate(clientId, {
-                            type: 'bodyHit',
-                            hitType: 'tailSnap',
-                            damageAmount: collisionResult.damage,
-                            knockbackAngle: collisionResult.fromAngle || this.game.creature.rotationAngle,
-                            knockbackForce: 8
-                        });
-                    }
-                }
+                this.dispatchAttackToTarget(
+                    clientId,
+                    collisionResult.damage,
+                    'tailSnap',
+                    false,
+                    collisionResult.fromAngle || this.game.creature.rotationAngle,
+                    8
+                );
             } else {
-                // Non-lethal headHit or bodyHit ram
-                if (isAITarget) {
-                    const aiPlayer = this.game.aiController.aiPlayers[clientId];
-                    if (aiPlayer) {
-                        const killed = this.game.aiHealthSystem.processAIDamage(
-                            aiPlayer,
-                            collisionResult.type,
-                            collisionResult.damage,
-                            this.game.creature.id
-                        );
-                        if (killed) {
-                            this.game.creature.kills++;
-                        }
-                    }
-                } else {
-                    if (this.game.room && typeof this.game.room.requestPresenceUpdate === 'function') {
-                        this.game.room.requestPresenceUpdate(clientId, {
-                            type: 'bodyHit',
-                            hitType: collisionResult.type,
-                            damageAmount: collisionResult.damage,
-                            knockbackAngle: this.game.creature.rotationAngle,
-                            knockbackForce: 4
-                        });
-                    }
-                }
+                this.dispatchAttackToTarget(
+                    clientId,
+                    collisionResult.damage,
+                    collisionResult.type,
+                    false,
+                    this.game.creature.rotationAngle,
+                    4
+                );
             }
         }
     }
@@ -597,35 +428,18 @@ export class PlayerController {
 
             if (hit) {
                 this.recentCollisions[clientId] = now;
-                const isAITarget = clientId.startsWith('ai-');
                 const isOctopus = squid.skinId === 'octopus';
                 const baseDamage = isOctopus ? (CONFIG.OCTOPUS_HEAD_DAMAGE || 20) : (CONFIG.SQUID_TENTACLE_DAMAGE || 25);
                 const damage = squid.isDashing ? Math.round(baseDamage * 1.25) : baseDamage;
 
-                if (isAITarget) {
-                    const aiPlayer = this.game.aiController.aiPlayers[clientId];
-                    if (aiPlayer) {
-                        const killed = this.game.aiHealthSystem.processAIDamage(
-                            aiPlayer,
-                            'bodyHit',
-                            damage,
-                            squid.id
-                        );
-                        if (killed) {
-                            squid.kills++;
-                        }
-                    }
-                } else {
-                    if (this.game.room && typeof this.game.room.requestPresenceUpdate === 'function') {
-                        this.game.room.requestPresenceUpdate(clientId, {
-                            type: 'bodyHit',
-                            hitType: 'bodyHit',
-                            damageAmount: damage,
-                            knockbackAngle: squid.rotationAngle,
-                            knockbackForce: 4.5
-                        });
-                    }
-                }
+                this.dispatchAttackToTarget(
+                    clientId,
+                    damage,
+                    'bodyHit',
+                    false,
+                    squid.rotationAngle,
+                    6
+                );
             }
         }
     }

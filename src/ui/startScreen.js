@@ -9,6 +9,7 @@ export class StartScreen {
         this.creatureSelectionManager = new CreatureSelectionManager(game);
         this.validationTimeout = null;
         this.isValidUsername = true;
+        this.selectedMode = this.game.room.gameMode || 'singleplayer';
         this.setupScreenElements();
     }
 
@@ -31,6 +32,9 @@ export class StartScreen {
         const header = document.createElement('h1');
         header.textContent = 'SeaStriker.io';
         this.container.appendChild(header);
+
+        // Game Mode Selection (Single Player vs Multiplayer)
+        this.setupGameModeSelector();
 
         // Create username input section
         const usernameContainer = document.createElement('div');
@@ -163,8 +167,9 @@ export class StartScreen {
         // Create play button
         const playButton = document.createElement('button');
         playButton.id = 'play-button';
-        playButton.textContent = 'PLAY';
+        playButton.textContent = 'PLAY SINGLE PLAYER';
         playButton.addEventListener('click', () => this.startGame());
+        this.playButton = playButton;
         this.container.appendChild(playButton);
 
         // Create button container for other buttons
@@ -180,7 +185,7 @@ export class StartScreen {
             this.game.statsScreen.show();
         });
         buttonContainer.appendChild(statsButton);
-        
+
         this.container.appendChild(buttonContainer);
 
         // Create instructions section
@@ -200,7 +205,8 @@ export class StartScreen {
                 <li>Ram / Dash: Mouse Click / Tap RAM Button</li>
                 <li>Fast Swim (Sprint): Hold Shift / Tap SPRINT Button</li>
                 <li>Dodge: Spacebar / Dodge Button</li>
-                <li>Goal: Eliminate other creatures and climb the leaderboard!</li>
+                <li>Single Player: Battle smart AI narwhals, sharks, squids, and knife fish!</li>
+                <li>Multiplayer: Live PvP ocean arena synced in real time!</li>
             </ul>
         `;
         instructionsContainer.appendChild(commonControls);
@@ -211,6 +217,73 @@ export class StartScreen {
         
         // Run initial check
         this.validateUsername(input.value);
+        this.updateModeSelectorUI();
+    }
+
+    setupGameModeSelector() {
+        const modeSection = document.createElement('div');
+        modeSection.className = 'game-mode-section';
+
+        modeSection.innerHTML = `
+            <div class="mode-selector-tabs">
+                <div class="mode-card ${this.selectedMode === 'singleplayer' ? 'selected' : ''}" id="mode-singleplayer" data-mode="singleplayer">
+                    <div class="mode-card-header">
+                        <span class="mode-card-title">🕹️ Single Player</span>
+                        <span class="mode-card-badge ai-badge">Vs AI Bots</span>
+                    </div>
+                    <p class="mode-card-desc">Solo ocean survival arena against smart AI marine predators. Instant start, zero lag, play offline.</p>
+                </div>
+
+                <div class="mode-card ${this.selectedMode === 'multiplayer' ? 'selected' : ''}" id="mode-multiplayer" data-mode="multiplayer">
+                    <div class="mode-card-header">
+                        <span class="mode-card-title">🌐 Multiplayer</span>
+                        <span class="mode-card-badge realtime-badge">Live Arena</span>
+                    </div>
+                    <p class="mode-card-desc">Real-time ocean battle against live players with instant synchronized movement & combat.</p>
+                </div>
+            </div>
+        `;
+
+        this.container.appendChild(modeSection);
+        this.modeSection = modeSection;
+
+        // Click handlers
+        const singleBtn = modeSection.querySelector('#mode-singleplayer');
+        const multiBtn = modeSection.querySelector('#mode-multiplayer');
+
+        singleBtn.addEventListener('click', () => {
+            this.setGameMode('singleplayer');
+        });
+
+        multiBtn.addEventListener('click', () => {
+            this.setGameMode('multiplayer');
+        });
+    }
+
+    setGameMode(mode) {
+        this.selectedMode = mode;
+        this.game.room.setGameMode(mode);
+        this.updateModeSelectorUI();
+    }
+
+    updateModeSelectorUI() {
+        if (!this.modeSection) return;
+
+        const singleCard = this.modeSection.querySelector('#mode-singleplayer');
+        const multiCard = this.modeSection.querySelector('#mode-multiplayer');
+
+        if (singleCard && multiCard) {
+            singleCard.classList.toggle('selected', this.selectedMode === 'singleplayer');
+            multiCard.classList.toggle('selected', this.selectedMode === 'multiplayer');
+        }
+
+        if (this.playButton) {
+            if (this.selectedMode === 'singleplayer') {
+                this.playButton.textContent = 'PLAY SINGLE PLAYER (VS AI)';
+            } else {
+                this.playButton.textContent = 'PLAY MULTIPLAYER ARENA';
+            }
+        }
     }
 
     async validateUsername(name) {
@@ -224,31 +297,6 @@ export class StartScreen {
                 this.usernameInput.classList.add('invalid');
             }
             return false;
-        }
-
-        try {
-            const socketId = this.game.room && this.game.room.clientId ? this.game.room.clientId : null;
-            const res = await fetch('/api/check-username', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ username: clean, socketId })
-            });
-
-            if (res.ok) {
-                const data = await res.json();
-                if (!data.available) {
-                    this.isValidUsername = false;
-                    this.usernameFeedback.className = 'username-feedback warning';
-                    this.usernameFeedback.textContent = data.message || 'Username taken by active player';
-                    if (this.usernameInput) {
-                        this.usernameInput.classList.remove('valid');
-                        this.usernameInput.classList.add('invalid');
-                    }
-                    return false;
-                }
-            }
-        } catch (e) {
-            // Offline fallback
         }
 
         this.isValidUsername = true;
@@ -287,6 +335,7 @@ export class StartScreen {
         this.visible = true;
         this.container.style.display = 'flex';
         this.updateCreatureNames();
+        this.updateModeSelectorUI();
     }
     
     hide() {
@@ -306,16 +355,16 @@ export class StartScreen {
             localStorage.setItem('username', cleanName);
         } catch (e) {}
 
-        // Sync with room peers
+        // Sync with multiplayer manager
         if (this.game.room) {
-            if (this.game.room.peers && this.game.room.clientId) {
-                this.game.room.peers[this.game.room.clientId] = {
-                    id: this.game.room.clientId,
-                    username: cleanName
-                };
-            }
-            if (this.game.room.socket && this.game.room.isServerConnected) {
-                this.game.room.socket.emit('setUsername', { username: cleanName });
+            this.game.room.setUsername(cleanName);
+            this.game.room.setGameMode(this.selectedMode);
+        }
+
+        if (this.selectedMode === 'multiplayer') {
+            const has = await this.game.room.supabase.hasCredentials();
+            if (has && this.game.room.supabase.connectionStatus !== 'connected') {
+                await this.game.room.supabase.connect();
             }
         }
 
@@ -339,13 +388,17 @@ export class StartScreen {
         if (existingScore) {
             existingScore.replaceWith(scoreDisplay);
         } else {
-            // Insert after the header
             header.after(scoreDisplay);
         }
         
         // Change play button text
-        const playButton = this.container.querySelector('#play-button');
-        playButton.textContent = 'PLAY AGAIN';
+        if (this.playButton) {
+            if (this.selectedMode === 'singleplayer') {
+                this.playButton.textContent = 'PLAY AGAIN (SINGLE PLAYER)';
+            } else {
+                this.playButton.textContent = 'REJOIN MULTIPLAYER ARENA';
+            }
+        }
         
         // Make sure the stats button is visible
         const statsButton = this.container.querySelector('#stats-button');

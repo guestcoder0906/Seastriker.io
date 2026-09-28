@@ -40,7 +40,7 @@ import { CoralReefEffectManager } from '../systems/coralReefEffectManager.js';
 import { MobileControlsManager } from '../ui/mobileControlsManager.js';
 import { KnifeFishAbilities } from '../systems/knifeFishAbilities.js';
 import { KnifeFishDodgeHandler } from '../systems/knifeFishDodgeHandler.js';
-import { WebsimSocket } from './websimSocket.js';
+import { MultiplayerManager } from './multiplayerManager.js';
 
 class NarwhaleGame {
     constructor() {
@@ -51,7 +51,7 @@ class NarwhaleGame {
         this.ctx = this.canvas.getContext('2d');
         this.resizeCanvas();
 
-        this.room = new WebsimSocket();
+        this.room = new MultiplayerManager();
         this.creature = null;
         this.gameActive = false; 
         this.players = {};
@@ -127,6 +127,8 @@ class NarwhaleGame {
         this.room.subscribePresence(this.handlePresenceUpdate.bind(this));
         
         this.room.subscribePresenceUpdateRequests(this.handlePresenceRequest.bind(this));
+
+        this.room.subscribeKillFeed(this.showKillFeedMessage.bind(this));
         
         // Initialize special skin access
         this.specialSkinAccess.initialize();
@@ -328,6 +330,69 @@ class NarwhaleGame {
         this.updateBubbles(deltaTime);
         
         this.updateLeaderboard();
+        this.updateGameModeHud();
+    }
+
+    updateGameModeHud() {
+        let hud = document.getElementById('game-mode-hud');
+        if (!hud) {
+            hud = document.createElement('div');
+            hud.id = 'game-mode-hud';
+            const container = document.getElementById('game-container') || document.body;
+            container.appendChild(hud);
+        }
+
+        if (!this.gameActive) {
+            hud.style.display = 'none';
+            return;
+        }
+
+        hud.style.display = 'flex';
+
+        if (this.room.gameMode === 'singleplayer') {
+            const botCount = Object.keys(this.aiController.aiPlayers || {}).length;
+            hud.innerHTML = `<span>🕹️ Single Player</span> <span style="opacity:0.5">•</span> <span style="color:#7dd3fc">${botCount} AI Predators</span>`;
+        } else {
+            const ping = this.room.pingMs;
+            const peerCount = Object.keys(this.room.peers || {}).length;
+            const roomName = this.room.supabase?.currentRoom || 'ocean-global-1';
+            const isConn = this.room.supabase?.connectionStatus === 'connected';
+            const statusDot = isConn ? '🟢' : '🟡';
+            const pingStr = ping > 0 ? `${ping}ms` : 'Syncing';
+            hud.innerHTML = `<span>⚡ Supabase Multiplayer</span> <span style="opacity:0.5">•</span> <span style="color:#38bdf8">${roomName}</span> <span style="opacity:0.5">•</span> <span>👥 ${peerCount}</span> <span style="opacity:0.5">•</span> <span>${statusDot} ${pingStr}</span>`;
+        }
+    }
+
+    showKillFeedMessage(announcement) {
+        if (!announcement) return;
+        let feed = document.getElementById('kill-feed-container');
+        if (!feed) {
+            feed = document.createElement('div');
+            feed.id = 'kill-feed-container';
+            const container = document.getElementById('game-container') || document.body;
+            container.appendChild(feed);
+        }
+
+        const item = document.createElement('div');
+        item.className = `kill-feed-item ${announcement.type || 'kill'}`;
+
+        if (announcement.type === 'kill') {
+            item.textContent = `⚔️ ${announcement.killer} eliminated ${announcement.victim}`;
+        } else if (announcement.type === 'join') {
+            item.textContent = `🌊 ${announcement.username} dove into the arena`;
+        } else if (announcement.type === 'leave') {
+            item.textContent = `💨 ${announcement.username} left the waters`;
+        } else {
+            item.textContent = announcement.message || 'Ocean Event';
+        }
+
+        feed.appendChild(item);
+
+        setTimeout(() => {
+            item.style.transition = 'opacity 0.4s';
+            item.style.opacity = '0';
+            setTimeout(() => item.remove(), 400);
+        }, 4000);
     }
 
     render() {
@@ -370,6 +435,7 @@ class NarwhaleGame {
         }
         
         this.gameActive = false;
+        this.updateGameModeHud();
         
         // Keep the current kill count when showing death screen
         this.startScreen.showDeathScreen(killCount);
@@ -467,42 +533,50 @@ class NarwhaleGame {
 
     updateLeaderboard() {
         const leaderboardEl = document.getElementById('players-list');
+        if (!leaderboardEl) return;
         leaderboardEl.innerHTML = '';
         
         const players = [];
+        const isSinglePlayer = this.room.gameMode === 'singleplayer';
         
         if (this.creature) {
             players.push({
                 id: this.room.clientId,
                 name: this.creature.name || this.room.peers[this.room.clientId]?.username || "You",
-                kills: this.creature.kills,
-                isLocal: true
+                kills: this.creature.kills || 0,
+                isLocal: true,
+                isAI: false
             });
         }
         
         for (const clientId in this.playerPresences) {
             if (clientId !== this.room.clientId && (!this.creature || clientId !== this.creature.id)) {
-                // Skip placeholder fake / AI bot players so ONLY real players appear in the leaderboard
-                if (clientId.startsWith('ai-')) {
+                const presence = this.playerPresences[clientId];
+                const isAI = clientId.startsWith('ai-');
+                
+                // In Multiplayer mode, only show real players on the leaderboard
+                // In Single Player mode, show AI bots so the player can compete with them!
+                if (!isSinglePlayer && isAI) {
                     continue;
                 }
                 
-                const presence = this.playerPresences[clientId];
-                const name = this.room.peers[clientId]?.username || "Unknown";
+                const name = this.room.peers[clientId]?.username || 
+                             (isAI ? (presence.name || "AI Predator") : "Unknown Striker");
                 
                 players.push({
                     id: clientId,
                     name: name,
                     kills: presence.kills || 0,
                     isLocal: false,
-                    isAI: false
+                    isAI: isAI
                 });
             }
         }
         
         players.sort((a, b) => b.kills - a.kills);
         
-        players.forEach((player, index) => {
+        // Show top 10
+        players.slice(0, 10).forEach((player, index) => {
             const playerEntry = document.createElement('div');
             playerEntry.className = 'player-entry';
             
@@ -512,9 +586,11 @@ class NarwhaleGame {
             
             if (player.isLocal) {
                 nameEl.style.fontWeight = 'bold';
+                nameEl.style.color = '#38bdf8';
             }
             if (player.isAI) {
                 nameEl.style.fontStyle = 'italic';
+                nameEl.style.opacity = '0.85';
             }
             
             const killsEl = document.createElement('div');

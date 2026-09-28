@@ -317,13 +317,13 @@ export class Dolphin extends Creature {
         const tailSegment = this.segments[this.segments.length - 1];
         
         for (const clientId in playerPresences) {
-            if (clientId === this.id) continue;
+            const other = playerPresences[clientId];
+            if (clientId === this.id || (typeof window !== 'undefined' && window.game?.isSelf && window.game.isSelf(clientId, other))) continue;
             
             if (this.recentCollisions[clientId] && (now - this.recentCollisions[clientId] < (CONFIG.COLLISION_COOLDOWN || 1000))) {
                 continue;
             }
             
-            const other = playerPresences[clientId];
             if (!other || !other.isAlive || !other.segments) continue;
             
             const isProtectedInCoral = other.isHiddenInReef || 
