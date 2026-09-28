@@ -46,7 +46,8 @@ export class Creature {
         this.inkCooldownModifier = 1.0;
         this.tentacleDamageModifier = 1.0;
         
-        // Add a property to track if creature is hidden in reef
+        // Add properties to track if creature is in rock formation
+        this.isInRock = false;
         this.isHiddenInReef = false;
     }
 
@@ -176,7 +177,8 @@ export class Creature {
             inkCooldown: this.inkCooldown,
             inkCooldownModifier: this.inkCooldownModifier,
             tentacleDamageModifier: this.tentacleDamageModifier,
-            isHiddenInReef: Boolean(this.isHiddenInReef),
+            isInRock: Boolean(this.isInRock || this.isHiddenInReef),
+            isHiddenInReef: Boolean(this.isInRock || this.isHiddenInReef),
             isCamouflaged: Boolean(this.isCamouflaged),
             camouflageActiveTimer: this.camouflageActiveTimer || 0,
         };

@@ -207,6 +207,7 @@ export class StartScreen {
                 <li>Dodge: Spacebar / Dodge Button</li>
                 <li>Single Player: Battle smart AI narwhals, sharks, squids, and knife fish!</li>
                 <li>Multiplayer: Live PvP ocean arena synced in real time!</li>
+                <li>Rock Formations: Rocks grant attack immunity, but slow non-apex swimmers unless they shift/ram out!</li>
             </ul>
         `;
         instructionsContainer.appendChild(commonControls);

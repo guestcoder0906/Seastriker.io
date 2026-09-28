@@ -144,12 +144,16 @@ export const CONFIG = {
     OCTOPUS_CAMOUFLAGE_COOLDOWN_UPGRADE_1: 1.25, // 25% faster cooldown with first upgrade
     OCTOPUS_CAMOUFLAGE_COOLDOWN_UPGRADE_2: 1.5,  // 50% faster cooldown with second upgrade
     
-    // Coral reef settings
-    CORAL_REEF_COUNT: 12,             // Number of coral reefs in the world
-    CORAL_REEF_MIN_SIZE: 150,         // Minimum size of coral reefs
-    CORAL_REEF_MAX_SIZE: 250,         // Maximum size of coral reefs
-    CORAL_REEF_HIDE_TIME: 1000,       // Time in ms before creature is fully hidden
-    CORAL_REEF_COLLISION_FORCE: 5,    // Force applied when colliding with coral reef
+    // Rock formation settings (Replaced coral reefs)
+    ROCK_COUNT: 14,                   // Number of rock formations in the world
+    ROCK_MIN_SIZE: 160,               // Minimum size of rocks
+    ROCK_MAX_SIZE: 280,               // Maximum size of rocks
+    ROCK_SLOW_MULTIPLIER: 0.38,       // 62% speed reduction for non-apex creatures inside rocks
+    CORAL_REEF_COUNT: 14,             // Backwards compatibility alias
+    CORAL_REEF_MIN_SIZE: 160,
+    CORAL_REEF_MAX_SIZE: 280,
+    CORAL_REEF_HIDE_TIME: 1000,
+    CORAL_REEF_COLLISION_FORCE: 5,
 
     // Knife Fish settings
     KNIFEFISH_SIZE_MULTIPLIER: 0.52,      // Knife fish slightly smaller (lowered from 0.6)

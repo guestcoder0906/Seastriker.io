@@ -19,6 +19,15 @@ export class NarwhalSpeed {
             if (creature.speedModifier && creature.speedModifier > 1.0) {
                 speed *= creature.speedModifier;
             }
+            // Apply rock slowdown effect (excluding sharks, narwhals, dolphins, and hammerheads)
+            // Non-apex creatures (squid, octopus, knifefish) get much slower in rocks unless shifting (fast swimming) or ramming (dashing)
+            const isApexOrExcluded = creature.type === 'shark' || creature.type === 'narwhal' || creature.type === 'dolphin' || (creature.skinId === 'hammerhead');
+            if (!isApexOrExcluded && (creature.isInRock || creature.isHiddenInReef)) {
+                if (!creature.isDashing && !creature.isFastSwimming) {
+                    speed *= (CONFIG.ROCK_SLOW_MULTIPLIER || 0.38);
+                }
+            }
+
             // Apply ink slow effect (50% speed penalty)
             if (creature.isInked) {
                 speed *= 0.5;
