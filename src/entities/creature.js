@@ -172,6 +172,7 @@ export class Creature {
             staminaReady: this.staminaReady,
             stamina: this.stamina,
             isFastSwimming: this.isFastSwimming,
+            isExhausted: Boolean(this.isExhausted),
             kills: this.kills,
             isAlive: this.isAlive,
             health: this.health,

@@ -325,7 +325,7 @@ export class AIController {
                         }
 
                         // Fast swim sprint when chasing if stamina permits
-                        if (ai.creature.stamina !== undefined && ai.creature.stamina > 0.35 && !ai.creature.isExhausted) {
+                        if (ai.creature.stamina !== undefined && ai.creature.stamina > 0.45 && !ai.creature.isExhausted && !ai.creature.isSprintExhausted) {
                             ai.fastSwimPressed = Math.random() < 0.7;
                         } else {
                             ai.fastSwimPressed = false;
@@ -333,11 +333,13 @@ export class AIController {
                     } else {
                         // Target went out of sight, return to exploring
                         ai.state = 'exploring';
+                        ai.fastSwimPressed = false;
                         this.setRandomExplorationTarget(ai);
                     }
                 } else {
                     // Target is dead or gone, return to exploring
                     ai.state = 'exploring';
+                    ai.fastSwimPressed = false;
                     this.setRandomExplorationTarget(ai);
                 }
             }
@@ -345,6 +347,7 @@ export class AIController {
         
         // Movement for exploration
         if (ai.state === 'exploring') {
+            ai.fastSwimPressed = false;
             // Dynamically control speed: AI can choose to stay still, go slower, or go normal/faster
             if (!this.decisionCooldowns[aiId].speedControl || this.decisionCooldowns[aiId].speedControl <= 0) {
                 const roll = Math.random();
@@ -503,6 +506,7 @@ export class AIController {
         // Also reset actions
         ai.mousePressed = false;
         ai.dodgePressed = false;
+        ai.fastSwimPressed = false;
     }
 
     shouldAIDodge(ai, aiId) {

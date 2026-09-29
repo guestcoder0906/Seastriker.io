@@ -79,10 +79,18 @@ export class Dolphin extends Creature {
         
         // Fast swim handling: allows fast swimming smoothly without stuttering/jittering under half green circle
         const drainRate = CONFIG.FAST_SWIM_DRAIN_RATE || (1 / 180);
-        const regenRate = CONFIG.FAST_SWIM_REGEN_RATE || (1 / 180);
+        const regenRate = CONFIG.FAST_SWIM_REGEN_RATE || (1 / 250);
         const minSprintStart = CONFIG.FAST_SWIM_MIN_STAMINA || 0.5;
-        
-        if (fastSwimPressed && !this.isSprintExhausted && this.stamina > 0.01) {
+
+        // Immediately enforce exhaustion if stamina is depleted
+        if (this.stamina <= 0) {
+            this.stamina = 0;
+            this.isFastSwimming = false;
+            this.isSprintExhausted = true;
+            this.isExhausted = true;
+        }
+
+        if (fastSwimPressed && !this.isSprintExhausted && this.stamina > 0.05) {
             this.isFastSwimming = true;
             this.stamina = Math.max(0, this.stamina - drainRate);
             if (this.stamina <= 0) {
@@ -93,14 +101,17 @@ export class Dolphin extends Creature {
             }
         } else {
             this.isFastSwimming = false;
-            this.stamina = Math.min(1.0, this.stamina + regenRate);
-            if (this.isSprintExhausted) {
-                if (this.stamina >= minSprintStart || (!fastSwimPressed && this.stamina >= 0.3)) {
-                    this.isSprintExhausted = false;
+            // Stamina ONLY regenerates when NOT pressing fast swim (catching breath)
+            if (!fastSwimPressed) {
+                this.stamina = Math.min(1.0, this.stamina + regenRate);
+                if (this.isSprintExhausted) {
+                    if (this.stamina >= minSprintStart) {
+                        this.isSprintExhausted = false;
+                        this.isExhausted = false;
+                    }
+                } else {
                     this.isExhausted = false;
                 }
-            } else if (!fastSwimPressed) {
-                this.isExhausted = false;
             }
         }
         
@@ -128,9 +139,10 @@ export class Dolphin extends Creature {
                 // Scales smoothly from 0 at closeThreshold up to 1.0 at midDist (middle original speed)
                 distFactor = (dist - closeThreshold) / (midDist - closeThreshold);
             } else {
-                // Further mouse spot swims a bit faster (up to 1.20x)
+                // Further mouse spot swims a bit faster (up to 1.20x) only when not exhausted
                 const farProgress = Math.min(1.0, (dist - midDist) / (farDist - midDist));
-                distFactor = 1.0 + farProgress * farBonus;
+                const activeBonus = (this.isExhausted || this.stamina <= 0) ? 0 : farBonus;
+                distFactor = 1.0 + farProgress * activeBonus;
             }
         }
 
@@ -155,6 +167,12 @@ export class Dolphin extends Creature {
             this.isDashing = true;
             this.dashTimer = 10; // active dash frames
             this.stamina = Math.max(0, this.stamina - burstCost);
+            if (this.stamina <= 0) {
+                this.stamina = 0;
+                this.isFastSwimming = false;
+                this.isSprintExhausted = true;
+                this.isExhausted = true;
+            }
             this.dashCooldown = cooldownFrames;
             
             this.velocity.x = this.velocity.x * 0.5 + Math.cos(this.movementAngle) * this.speed * CONFIG.DASH_MULTIPLIER * 0.5;
@@ -171,6 +189,12 @@ export class Dolphin extends Creature {
             this.isDodging = true;
             this.dodgeTimer = 10;
             this.stamina = Math.max(0, this.stamina - burstCost);
+            if (this.stamina <= 0) {
+                this.stamina = 0;
+                this.isFastSwimming = false;
+                this.isSprintExhausted = true;
+                this.isExhausted = true;
+            }
             this.dodgeCooldown = dodgeCooldownFrames;
             
             // Find closest creature
@@ -209,8 +233,10 @@ export class Dolphin extends Creature {
         let currentSpeed = this.speed * effectiveFactor;
         if (this.isDashing) {
             currentSpeed = this.speed * CONFIG.DASH_MULTIPLIER;
-        } else if (this.isFastSwimming) {
+        } else if (this.isFastSwimming && !this.isExhausted && this.stamina > 0) {
             currentSpeed = this.speed * (CONFIG.FAST_SWIM_MULTIPLIER || 1.45);
+        } else if (this.isExhausted || this.stamina <= 0) {
+            currentSpeed = this.speed * Math.min(1.0, effectiveFactor) * (CONFIG.EXHAUSTED_SPEED_MULTIPLIER || 0.80);
         }
         
         let moveX = Math.cos(this.movementAngle) * currentSpeed;
@@ -222,6 +248,15 @@ export class Dolphin extends Creature {
             if (Math.hypot(this.velocity.x, this.velocity.y) < 0.03) {
                 this.velocity.x = 0;
                 this.velocity.y = 0;
+            }
+            const mag = Math.hypot(this.velocity.x, this.velocity.y);
+            const normalMax = (this.isExhausted || this.stamina <= 0)
+                ? this.speed * (CONFIG.EXHAUSTED_SPEED_MULTIPLIER || 0.80)
+                : this.speed * 1.20;
+            const maxAllowed = Math.max(currentSpeed, this.isDashing ? this.speed * CONFIG.DASH_MULTIPLIER : (this.isFastSwimming ? this.speed * (CONFIG.FAST_SWIM_MULTIPLIER || 1.45) : normalMax));
+            if (mag > maxAllowed && maxAllowed > 0.01) {
+                this.velocity.x = (this.velocity.x / mag) * maxAllowed;
+                this.velocity.y = (this.velocity.y / mag) * maxAllowed;
             }
         } else {
             this.velocity.x *= 0.98;

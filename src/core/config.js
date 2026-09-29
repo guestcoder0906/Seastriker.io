@@ -23,9 +23,10 @@ export const CONFIG = {
     
     // Fast swim / Sprint settings (Holding Shift)
     FAST_SWIM_MULTIPLIER: 1.45,  // Responsive sprint acceleration
-    FAST_SWIM_DRAIN_RATE: 1 / 180, // Depletes full green to red smoothly
-    FAST_SWIM_REGEN_RATE: 1 / 180, // Equal regen rate to restore full green
+    FAST_SWIM_DRAIN_RATE: 1 / 180, // Depletes full green to red smoothly (~3.0s continuous sprint)
+    FAST_SWIM_REGEN_RATE: 1 / 250, // Slightly slower stamina regen (~4.15s to recover full stamina)
     FAST_SWIM_MIN_STAMINA: 0.5,  // Sprint available while green circle is halfway or more green (>= 0.5)
+    EXHAUSTED_SPEED_MULTIPLIER: 0.80, // Speed penalty when out of stamina / exhausted
     BURST_STAMINA_COST: 0.5,     // Ramming uses half stamina (0.5)
     BURST_MIN_STAMINA: 0.5,      // Stamina has to be more than 1/2 (> 0.5) to ram
     

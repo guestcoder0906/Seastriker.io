@@ -1013,6 +1013,10 @@ class NarwhaleGame {
             this.mobileControls.dodgeActive = false;
             e.preventDefault();
         });
+        dodgeButton.addEventListener('touchcancel', (e) => {
+            this.mobileControls.dodgeActive = false;
+            e.preventDefault();
+        });
 
         const fastSwimButton = document.getElementById('fastswim-button');
         if (fastSwimButton) {
@@ -1021,6 +1025,10 @@ class NarwhaleGame {
                 e.preventDefault();
             });
             fastSwimButton.addEventListener('touchend', (e) => {
+                this.mobileControls.fastSwimActive = false;
+                e.preventDefault();
+            });
+            fastSwimButton.addEventListener('touchcancel', (e) => {
                 this.mobileControls.fastSwimActive = false;
                 e.preventDefault();
             });
