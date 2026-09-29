@@ -165,7 +165,7 @@ export class PlayerController {
             }
             
             const targetPresence = this.game.playerPresences[clientId];
-            if (targetPresence && (targetPresence.isHiddenInReef || (this.game.coralReefSystem && this.game.coralReefSystem.isCreatureProtectedInReef(targetPresence)))) {
+            if (!targetPresence || targetPresence.isAlive === false || (typeof targetPresence.health === 'number' && targetPresence.health <= 0) || (targetPresence.isHiddenInReef || (this.game.coralReefSystem && this.game.coralReefSystem.isCreatureProtectedInReef(targetPresence)))) {
                 return;
             }
 
@@ -224,7 +224,7 @@ export class PlayerController {
             }
             
             const targetPresence = this.game.playerPresences[clientId];
-            if (targetPresence && (targetPresence.isHiddenInReef || (this.game.coralReefSystem && this.game.coralReefSystem.isCreatureProtectedInReef(targetPresence)))) {
+            if (!targetPresence || targetPresence.isAlive === false || (typeof targetPresence.health === 'number' && targetPresence.health <= 0) || (targetPresence.isHiddenInReef || (this.game.coralReefSystem && this.game.coralReefSystem.isCreatureProtectedInReef(targetPresence)))) {
                 return;
             }
 
@@ -271,7 +271,7 @@ export class PlayerController {
             }
             
             const targetPresence = this.game.playerPresences[clientId];
-            if (targetPresence && (targetPresence.isHiddenInReef || (this.game.coralReefSystem && this.game.coralReefSystem.isCreatureProtectedInReef(targetPresence)))) {
+            if (!targetPresence || targetPresence.isAlive === false || (typeof targetPresence.health === 'number' && targetPresence.health <= 0) || (targetPresence.isHiddenInReef || (this.game.coralReefSystem && this.game.coralReefSystem.isCreatureProtectedInReef(targetPresence)))) {
                 return;
             }
 
@@ -318,7 +318,7 @@ export class PlayerController {
                 return;
             }
             const targetPresence = this.game.playerPresences[clientId];
-            if (targetPresence && (targetPresence.isHiddenInReef || (this.game.coralReefSystem && this.game.coralReefSystem.isCreatureProtectedInReef(targetPresence)))) {
+            if (!targetPresence || targetPresence.isAlive === false || (typeof targetPresence.health === 'number' && targetPresence.health <= 0) || (targetPresence.isHiddenInReef || (this.game.coralReefSystem && this.game.coralReefSystem.isCreatureProtectedInReef(targetPresence)))) {
                 return;
             }
 
@@ -379,7 +379,7 @@ export class PlayerController {
             if (this.recentCollisions[clientId] && (now - this.recentCollisions[clientId] < (CONFIG.COLLISION_COOLDOWN || 1000))) continue;
 
             const target = this.game.playerPresences[clientId];
-            if (!target || !target.segments || target.segments.length === 0) continue;
+            if (!target || target.isAlive === false || (typeof target.health === 'number' && target.health <= 0) || !target.segments || target.segments.length === 0) continue;
             if (target.isHiddenInReef || (this.game.coralReefSystem && this.game.coralReefSystem.isCreatureProtectedInReef(target))) continue;
 
             if (this.game.octopusAbilities && this.game.octopusAbilities.shouldEvadeAttack(target)) continue;

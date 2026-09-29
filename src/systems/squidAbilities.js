@@ -244,8 +244,9 @@ calculateTentacleHitbox(squid) {
                 );
             }
         } else {
-            // Human player in multiplayer - send damage and slow effect request
-            if (canDamage) {
+            // Human player in multiplayer: only real human players send network attacks to remote players
+            // Local AI squids must NEVER send network damage to remote players
+            if (squid && squid.id && !squid.id.startsWith('ai-') && canDamage) {
                 hitboxInfo.lastDamageTime = now;
                 if (this.game.room && typeof this.game.room.requestPresenceUpdate === 'function') {
                     this.game.room.requestPresenceUpdate(targetId, {

@@ -181,17 +181,23 @@ class NarwhaleGame {
     }
 
     handlePresenceUpdate(presences) {
+        const myClientId = this.room?.clientId;
+        const myCreatureId = this.creature?.id;
         const realPlayerPresences = {};
         for (const [id, pres] of Object.entries(presences || {})) {
-            // Only accept real network players; AI is managed strictly by local AIController
-            if (!id.startsWith('ai-')) {
-                realPlayerPresences[id] = pres;
+            // Only accept real alive network players; skip AI (local), self, and dead players
+            if (!id.startsWith('ai-') && id !== myClientId && id !== myCreatureId) {
+                if (pres && pres.isAlive !== false && (typeof pres.health !== 'number' || pres.health > 0) && pres.segments && pres.segments.length > 0) {
+                    realPlayerPresences[id] = pres;
+                }
             }
         }
         this.playerPresences = realPlayerPresences;
         
-        if (this.gameActive && this.creature && this.creature.isAlive) {
+        if (this.gameActive && this.creature && this.creature.isAlive && (typeof this.creature.health !== 'number' || this.creature.health > 0)) {
             this.playerPresences[this.room.clientId] = this.creature.getPresenceData();
+        } else if (this.room?.clientId) {
+            delete this.playerPresences[this.room.clientId];
         }
         
         for (const aiId in this.aiController?.aiPlayers || {}) {
@@ -201,6 +207,8 @@ class NarwhaleGame {
             }
         }
         
+        const validClientIds = new Set(Object.keys(this.playerPresences));
+
         for (const clientId in this.playerPresences) {
             const presence = this.playerPresences[clientId];
             const peerName = this.room.peers[clientId]?.username;
@@ -233,7 +241,7 @@ class NarwhaleGame {
 
         // Clean up disconnected or dead players
         for (const id in this.players) {
-            if (!this.playerPresences[id] || !this.playerPresences[id].isAlive) {
+            if (!validClientIds.has(id) || !this.playerPresences[id] || !this.playerPresences[id].isAlive) {
                 delete this.players[id];
             }
         }
@@ -372,6 +380,7 @@ class NarwhaleGame {
         for (const id in this.interpolatedPresences) {
             if (!validIds.has(id)) {
                 delete this.interpolatedPresences[id];
+                delete this.players[id];
             }
         }
     }
@@ -711,6 +720,25 @@ class NarwhaleGame {
 
     handlePresenceRequest(updateRequest, fromClientId) {
         if (!this.gameActive || !this.creature || !this.creature.isAlive) return;
+
+        // Strictly ignore any attacks originating from AI bots on remote clients
+        if ((fromClientId && fromClientId.startsWith('ai-')) || (updateRequest && updateRequest.attackerId && updateRequest.attackerId.startsWith('ai-'))) {
+            return;
+        }
+
+        // Deduplicate multi-channel packet transmission (Supabase + BroadcastChannel + Socket.IO)
+        if (updateRequest && updateRequest.packetId) {
+            if (!this._processedPacketIds) this._processedPacketIds = new Set();
+            if (this._processedPacketIds.has(updateRequest.packetId)) {
+                return; // Prevent duplicate multi-channel damage / hit
+            }
+            this._processedPacketIds.add(updateRequest.packetId);
+            setTimeout(() => {
+                if (this._processedPacketIds) {
+                    this._processedPacketIds.delete(updateRequest.packetId);
+                }
+            }, 3000);
+        }
 
         if (updateRequest.type === 'incrementKills') {
             const targetId = updateRequest.targetId;

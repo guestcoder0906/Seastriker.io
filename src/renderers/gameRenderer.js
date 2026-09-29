@@ -121,13 +121,17 @@ export class GameRenderer {
             this.game.inkSystem.drawInkClouds(ctx);
         }
         
-        // Draw other players (skip local player and any dead players)
+        // Draw other players (skip local player, dead players, and stale self clones)
         for (const clientId in playerPresences) {
             if (clientId === this.game.room?.clientId || (narwhal && clientId === narwhal.id)) {
                 continue;
             }
             const presence = playerPresences[clientId];
             if (presence && presence.isAlive !== false && (typeof presence.health !== 'number' || presence.health > 0) && presence.segments && presence.segments.length > 0) {
+                // If local player is actively playing and a ghost presence shares the exact same name, don't draw it
+                if (narwhal && presence.name === narwhal.name && !clientId.startsWith('ai-')) {
+                    continue;
+                }
                 this.drawCreatureByType(ctx, presence);
             }
         }

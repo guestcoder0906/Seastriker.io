@@ -365,11 +365,22 @@ async function startServer() {
     // Real-time presence updates (movement, angle, segments, etc.)
     socket.on("updatePresence", (data) => {
       if (!data) return;
+      
+      // If player died, immediately remove them from server presence to prevent ghost clones
+      if (data.isAlive === false || (typeof data.health === "number" && data.health <= 0)) {
+        delete presences[clientId];
+        io.emit("presence", presences);
+        socket.broadcast.emit("peer_dead", { id: clientId });
+        return;
+      }
+
       const prev = presences[clientId] || {};
       const merged = {
         ...prev,
         ...data,
         id: clientId,
+        isAlive: true,
+        lastSeen: Date.now(),
         name: peers[clientId]?.username || data.name || prev.name || "Player"
       };
       if (!data.segments && prev.segments) {
@@ -502,6 +513,7 @@ async function startServer() {
       }
 
       socket.broadcast.emit("peerLeft", clientId);
+      socket.broadcast.emit("peer_dead", { id: clientId });
       socket.broadcast.emit("presence", presences);
     });
   });

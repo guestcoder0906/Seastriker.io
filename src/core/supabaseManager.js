@@ -423,6 +423,15 @@ export class SupabaseRealtimeManager {
             const state = this.channel.presenceState();
             const newPeers = { ...this.peers };
             newPeers[this.clientId] = { id: this.clientId, username: this.username };
+            const activeKeys = new Set(Object.keys(state));
+
+            // Prune peers and remote presences that are no longer active in Supabase presence channel
+            for (const id in this.remotePresences) {
+                if (!activeKeys.has(id)) {
+                    delete this.remotePresences[id];
+                    delete this.peers[id];
+                }
+            }
 
             for (const [key, presences] of Object.entries(state)) {
                 if (presences && presences.length > 0) {
@@ -431,8 +440,8 @@ export class SupabaseRealtimeManager {
                         id: key,
                         username: latest.username || latest.name || ('Player_' + key.substring(0, 4))
                     };
-                    // Only initialize remotePresence if we don't already have live position data for them
-                    if (key !== this.clientId && !this.remotePresences[key] && latest.segments && latest.segments.length > 0) {
+                    // Only initialize remotePresence if alive with valid segments
+                    if (key !== this.clientId && !this.remotePresences[key] && latest.isAlive !== false && latest.segments && latest.segments.length > 0) {
                         this.remotePresences[key] = { ...latest, lastSeen: performance.now() };
                     }
                 }
@@ -492,7 +501,16 @@ export class SupabaseRealtimeManager {
             }
         });
 
-        // 3c. Global Leaderboard Realtime Sync
+        // 3c. Explicit peer dead broadcast (immediate clone & ghost cleanup)
+        this.channel.on('broadcast', { event: 'peer_dead' }, ({ payload }) => {
+            if (payload && payload.id) {
+                delete this.remotePresences[payload.id];
+                delete this.peers[payload.id];
+                this.notifyPresenceUpdate();
+            }
+        });
+
+        // 3d. Global Leaderboard Realtime Sync
         this.channel.on('broadcast', { event: 'leaderboard_update' }, ({ payload }) => {
             if (payload) {
                 for (const cb of this.leaderboardCallbacks) {
@@ -512,6 +530,15 @@ export class SupabaseRealtimeManager {
         // 4. Fast Position Update
         this.channel.on('broadcast', { event: 'pos' }, ({ payload }) => {
             if (!payload || !payload.id || payload.id === this.clientId) return;
+
+            // Immediately purge dead players to prevent ghost cloning
+            if (payload.isAlive === false || (typeof payload.health === 'number' && payload.health <= 0) || !payload.segments || payload.segments.length === 0) {
+                delete this.remotePresences[payload.id];
+                delete this.peers[payload.id];
+                this.notifyPresenceUpdate();
+                return;
+            }
+
             const existing = this.remotePresences[payload.id];
             // Only drop if within a small out-of-order jitter window (<1200ms)
             // If payload.t jumped backwards by >1200ms, it's a page reload or clock reset, so accept it!
@@ -586,12 +613,12 @@ export class SupabaseRealtimeManager {
                     payload: { senderId: this.clientId, t: this.lastPingSent }
                 }).catch(() => {});
 
-                // Gracefully prune stale remote presences with no updates for > 15 seconds
+                // Gracefully prune stale remote presences with no updates for > 4 seconds
                 const now = performance.now();
                 let pruned = false;
                 for (const id in this.remotePresences) {
                     const pres = this.remotePresences[id];
-                    if (pres && pres.lastSeen && (now - pres.lastSeen > 15000)) {
+                    if (pres && pres.lastSeen && (now - pres.lastSeen > 4000)) {
                         delete this.remotePresences[id];
                         delete this.peers[id];
                         pruned = true;
@@ -637,13 +664,31 @@ export class SupabaseRealtimeManager {
 
     sendPresenceUpdate(presenceData) {
         if (!presenceData) return;
+        const now = performance.now();
+        const isDead = presenceData.isAlive === false || (typeof presenceData.health === 'number' && presenceData.health <= 0);
+
+        if (isDead) {
+            this.localPresence = null;
+            this.lastBroadcastTime = now;
+            // Immediate death notice via both peer_dead and pos with segments: []
+            this.broadcast('peer_dead', { id: this.clientId });
+            this.broadcast('pos', {
+                id: this.clientId,
+                name: this.username,
+                isAlive: false,
+                health: 0,
+                segments: [],
+                t: now
+            });
+            return;
+        }
+
         const current = this.localPresence || {};
         this.localPresence = { ...current, ...presenceData };
         if (!presenceData.segments && current.segments) {
             presenceData.segments = current.segments;
         }
 
-        const now = performance.now();
         if (now - this.lastBroadcastTime >= this.broadcastThrottleMs) {
             this.lastBroadcastTime = now;
             
@@ -658,7 +703,7 @@ export class SupabaseRealtimeManager {
                 velocity: presenceData.velocity,
                 isDashing: Boolean(presenceData.isDashing),
                 isDodging: Boolean(presenceData.isDodging),
-                isAlive: presenceData.isAlive !== false,
+                isAlive: true,
                 kills: presenceData.kills || 0,
                 health: presenceData.health,
                 type: presenceData.type || 'narwhal',

@@ -17,7 +17,7 @@ export class NarwhalCollisions {
             if (this.game.isSelf ? this.game.isSelf(clientId, otherNarwhal) : (clientId === narwhal.id || (this.game.creature && (clientId === this.game.room.clientId || clientId === this.game.creature.id)))) continue;
             
             // Skip if other narwhal is not alive or doesn't have segments
-            if (!otherNarwhal || !otherNarwhal.isAlive || !otherNarwhal.segments) continue;
+            if (!otherNarwhal || otherNarwhal.isAlive === false || (typeof otherNarwhal.health === 'number' && otherNarwhal.health <= 0) || !otherNarwhal.segments) continue;
             
             // Check each segment of this narwhal against each segment of the other narwhal
             for (let i = 0; i < narwhal.segments.length; i++) {
@@ -87,7 +87,7 @@ export class NarwhalCollisions {
             }
             
             // Skip if other narwhal is not alive or doesn't have segments
-            if (!otherNarwhal || !otherNarwhal.isAlive || !otherNarwhal.segments) continue;
+            if (!otherNarwhal || otherNarwhal.isAlive === false || (typeof otherNarwhal.health === 'number' && otherNarwhal.health <= 0) || !otherNarwhal.segments) continue;
             
             // Cannot attack creatures hiding inside coral reefs since they are protected
             if (otherNarwhal.isHiddenInReef || (this.game.coralReefSystem && this.game.coralReefSystem.isCreatureProtectedInReef(otherNarwhal))) {

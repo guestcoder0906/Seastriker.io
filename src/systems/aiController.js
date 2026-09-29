@@ -652,25 +652,10 @@ export class AIController {
                     }
                 }
             } else {
-                // Remote human player in multiplayer: send network update request
-                if (this.game.room && typeof this.game.room.requestPresenceUpdate === 'function') {
-                    if (collisionResult.type === 'tuskToTusk') {
-                        this.game.room.requestPresenceUpdate(targetId, {
-                            type: 'tuskCollision',
-                            fromAngle: ai.creature.rotationAngle,
-                            knockbackForce: collisionResult.knockbackForce
-                        });
-                    } else {
-                        this.game.room.requestPresenceUpdate(targetId, {
-                            type: collisionResult.type === 'lethal' ? 'collision' : 'bodyHit',
-                            hitType: collisionResult.type,
-                            damageAmount: collisionResult.damage,
-                            knockbackAngle: ai.creature.rotationAngle,
-                            knockbackForce: collisionResult.knockbackForce || 5,
-                            attackerId: aiId
-                        });
-                    }
-                }
+                // Remote human player in multiplayer:
+                // NEVER send network damage from local AI bots to remote players!
+                // AI bots are simulated locally on each machine. Remote players battle their own local AI instances.
+                // Sending network damage from AI across clients caused players to die randomly to invisible phantom bots.
             }
         }
         

@@ -43,9 +43,25 @@ export class MultiplayerManager {
         // Forward callbacks from Supabase Realtime
         this.supabase.subscribePresence((remotePresences) => {
             if (this.gameMode === 'multiplayer') {
+                const activeRemoteIds = new Set(Object.keys(remotePresences || {}));
+                // Prune presences that are no longer reported by Supabase
+                for (const id in this.localPresences) {
+                    if (id !== this.clientId && !id.startsWith('ai-') && !activeRemoteIds.has(id) && (!this.socket || !this.socket.connected)) {
+                        delete this.localPresences[id];
+                        delete this.peers[id];
+                    }
+                }
                 for (const [key, pres] of Object.entries(remotePresences || {})) {
-                    if (key !== this.clientId && pres) {
-                        this.localPresences[key] = pres;
+                    if (key !== this.clientId) {
+                        if (!pres || pres.isAlive === false || (typeof pres.health === 'number' && pres.health <= 0) || !pres.segments || pres.segments.length === 0) {
+                            delete this.localPresences[key];
+                            delete this.peers[key];
+                        } else {
+                            this.localPresences[key] = pres;
+                            if (pres.name) {
+                                this.peers[key] = { id: key, username: pres.name };
+                            }
+                        }
                     }
                 }
                 this.peers = { ...this.peers, ...this.supabase.peers };
@@ -85,9 +101,13 @@ export class MultiplayerManager {
                             presence: this.localPresences[this.clientId]
                         });
                     }
+                } else if (msg.type === 'peerDead' && msg.id) {
+                    delete this.peers[msg.id];
+                    delete this.localPresences[msg.id];
+                    this.notifyPresence();
                 } else if (msg.type === 'peerSync' && msg.peer) {
                     this.peers[msg.peer.id] = msg.peer;
-                    if (msg.presence) {
+                    if (msg.presence && msg.presence.isAlive !== false && (typeof msg.presence.health !== 'number' || msg.presence.health > 0) && msg.presence.segments && msg.presence.segments.length > 0) {
                         this.localPresences[msg.peer.id] = msg.presence;
                         this.notifyPresence();
                     }
@@ -97,6 +117,11 @@ export class MultiplayerManager {
                     this.notifyPresence();
                 } else if (msg.type === 'presence' && msg.clientId && msg.data) {
                     if (msg.clientId !== this.clientId) {
+                        if (msg.data.isAlive === false || (typeof msg.data.health === 'number' && msg.data.health <= 0)) {
+                            delete this.localPresences[msg.clientId];
+                            this.notifyPresence();
+                            return;
+                        }
                         const existing = this.localPresences[msg.clientId];
                         if (existing && existing.t && msg.t) {
                             if (msg.t < existing.t && (existing.t - msg.t) < 1200) {
@@ -239,6 +264,14 @@ export class MultiplayerManager {
                 this.peers[peer.id] = peer;
             });
 
+            this.socket.on('peer_dead', (data) => {
+                if (data && data.id) {
+                    delete this.peers[data.id];
+                    delete this.localPresences[data.id];
+                    this.notifyPresence();
+                }
+            });
+
             this.socket.on('peerLeft', (id) => {
                 delete this.peers[id];
                 delete this.localPresences[id];
@@ -247,9 +280,26 @@ export class MultiplayerManager {
 
             this.socket.on('presence', (presences) => {
                 if (this.gameMode === 'multiplayer') {
-                    for (const [id, p] of Object.entries(presences)) {
+                    const serverIds = new Set(Object.keys(presences || {}));
+
+                    // Prune local presences that are no longer on the server
+                    for (const id in this.localPresences) {
+                        if (id !== this.clientId && !serverIds.has(id)) {
+                            delete this.localPresences[id];
+                            delete this.peers[id];
+                        }
+                    }
+
+                    for (const [id, p] of Object.entries(presences || {})) {
                         if (id !== this.clientId) {
-                            this.localPresences[id] = p;
+                            if (!p || p.isAlive === false || (typeof p.health === 'number' && p.health <= 0)) {
+                                delete this.localPresences[id];
+                            } else {
+                                this.localPresences[id] = p;
+                                if (p.name) {
+                                    this.peers[id] = { id, username: p.name };
+                                }
+                            }
                         }
                     }
                     this.notifyPresence();
@@ -292,11 +342,50 @@ export class MultiplayerManager {
         }
     }
 
+    notifyDeath(attackerId) {
+        delete this.localPresences[this.clientId];
+        const deadData = {
+            id: this.clientId,
+            name: this.supabase.username || "Player",
+            isAlive: false,
+            health: 0,
+            segments: [],
+            t: performance.now(),
+            attackerId: attackerId || null
+        };
+
+        // Immediately send death update to all network channels unthrottled
+        this.supabase.sendPresenceUpdate(deadData);
+
+        if (this.channel) {
+            this.channel.postMessage({ type: 'peerDead', id: this.clientId });
+            this.channel.postMessage({
+                type: 'presence',
+                clientId: this.clientId,
+                data: deadData,
+                t: performance.now()
+            });
+        }
+
+        if (this.socket && this.socket.connected) {
+            this.socket.emit('updatePresence', deadData);
+        }
+
+        this.notifyPresence();
+    }
+
     updatePresence(data) {
         if (!data) return;
+        const isDead = data.isAlive === false || (typeof data.health === 'number' && data.health <= 0);
+
+        if (isDead) {
+            this.notifyDeath();
+            return;
+        }
+
         const current = this.localPresences[this.clientId] || {};
         const merged = { ...current, ...data };
-        if (!data.segments && current.segments) {
+        if (!data.segments && current.segments && current.isAlive !== false) {
             merged.segments = current.segments;
         }
         this.localPresences[this.clientId] = merged;
@@ -329,6 +418,13 @@ export class MultiplayerManager {
     }
 
     requestPresenceUpdate(targetId, updateRequest) {
+        if (!targetId || !updateRequest) return;
+
+        // Assign a unique packetId so multi-channel transmission does not cause duplicate damage hits
+        if (!updateRequest.packetId) {
+            updateRequest.packetId = `${this.clientId}_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+        }
+
         if (this.gameMode === 'multiplayer') {
             // 1. Supabase Realtime
             this.supabase.sendCombatRequest(targetId, updateRequest);
