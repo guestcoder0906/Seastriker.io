@@ -331,8 +331,9 @@ export class CoralReefSystem {
             creature.isHiddenInReef = true;
         }
 
-        if (clientId === this.game.room.clientId) {
+        if (clientId === this.game.room.clientId && creature) {
             this.game.room.updatePresence({
+                ...creature.getPresenceData(),
                 isInRock: true,
                 isHiddenInReef: true
             });
@@ -351,8 +352,9 @@ export class CoralReefSystem {
             creature.isHiddenInReef = false;
         }
 
-        if (clientId === this.game.room.clientId) {
+        if (clientId === this.game.room.clientId && creature) {
             this.game.room.updatePresence({
+                ...creature.getPresenceData(),
                 isInRock: false,
                 isHiddenInReef: false
             });

@@ -637,13 +637,17 @@ export class SupabaseRealtimeManager {
 
     sendPresenceUpdate(presenceData) {
         if (!presenceData) return;
-        this.localPresence = presenceData;
+        const current = this.localPresence || {};
+        this.localPresence = { ...current, ...presenceData };
+        if (!presenceData.segments && current.segments) {
+            presenceData.segments = current.segments;
+        }
 
         const now = performance.now();
         if (now - this.lastBroadcastTime >= this.broadcastThrottleMs) {
             this.lastBroadcastTime = now;
             
-            // Clean minimal payload for high performance
+            // Clean complete payload for high performance and full visual accuracy
             const compactPayload = {
                 id: this.clientId,
                 name: presenceData.name || this.username,
@@ -652,14 +656,19 @@ export class SupabaseRealtimeManager {
                 segments: presenceData.segments,
                 color: presenceData.color,
                 velocity: presenceData.velocity,
-                isDashing: presenceData.isDashing,
-                isDodging: presenceData.isDodging,
-                isAlive: presenceData.isAlive,
-                kills: presenceData.kills,
+                isDashing: Boolean(presenceData.isDashing),
+                isDodging: Boolean(presenceData.isDodging),
+                isAlive: presenceData.isAlive !== false,
+                kills: presenceData.kills || 0,
                 health: presenceData.health,
-                type: presenceData.type,
-                skinId: presenceData.skinId,
-                isHiddenInReef: presenceData.isHiddenInReef,
+                type: presenceData.type || 'narwhal',
+                skinId: presenceData.skinId || 'default',
+                isHiddenInReef: Boolean(presenceData.isHiddenInReef),
+                isCamouflaged: Boolean(presenceData.isCamouflaged),
+                camouflageActiveTimer: presenceData.camouflageActiveTimer || 0,
+                tentacles: presenceData.tentacles,
+                tuskLengthModifier: presenceData.tuskLengthModifier || 1.0,
+                upgrades: presenceData.upgrades,
                 rotationAngle: presenceData.rotationAngle,
                 t: now
             };

@@ -43,16 +43,11 @@ export class MultiplayerManager {
         // Forward callbacks from Supabase Realtime
         this.supabase.subscribePresence((remotePresences) => {
             if (this.gameMode === 'multiplayer') {
-                const updated = {};
-                if (this.localPresences[this.clientId]) {
-                    updated[this.clientId] = this.localPresences[this.clientId];
-                }
-                for (const [key, pres] of Object.entries(remotePresences)) {
-                    if (key !== this.clientId) {
-                        updated[key] = pres;
+                for (const [key, pres] of Object.entries(remotePresences || {})) {
+                    if (key !== this.clientId && pres) {
+                        this.localPresences[key] = pres;
                     }
                 }
-                this.localPresences = updated;
                 this.peers = { ...this.peers, ...this.supabase.peers };
                 this.notifyPresence();
             }
@@ -299,13 +294,18 @@ export class MultiplayerManager {
 
     updatePresence(data) {
         if (!data) return;
-        this.localPresences[this.clientId] = data;
+        const current = this.localPresences[this.clientId] || {};
+        const merged = { ...current, ...data };
+        if (!data.segments && current.segments) {
+            merged.segments = current.segments;
+        }
+        this.localPresences[this.clientId] = merged;
 
         if (this.gameMode === 'multiplayer') {
             const now = performance.now();
 
             // 1. Supabase Realtime (global internet multiplayer)
-            this.supabase.sendPresenceUpdate(data);
+            this.supabase.sendPresenceUpdate(merged);
 
             // 2. BroadcastChannel (instant cross-tab sync on same machine / Vercel, throttled to 30ms to prevent browser event queue overload)
             if (this.channel && now - this._lastLocalBroadcast >= 30) {
@@ -313,7 +313,7 @@ export class MultiplayerManager {
                 this.channel.postMessage({
                     type: 'presence',
                     clientId: this.clientId,
-                    data,
+                    data: merged,
                     t: now
                 });
             }
@@ -321,7 +321,7 @@ export class MultiplayerManager {
             // 3. Socket.IO (local server if connected, throttled to 30ms)
             if (this.socket && this.socket.connected && now - this._lastSocketBroadcast >= 30) {
                 this._lastSocketBroadcast = now;
-                this.socket.emit('updatePresence', data);
+                this.socket.emit('updatePresence', merged);
             }
         } else {
             this.notifyPresence();

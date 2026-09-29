@@ -326,37 +326,56 @@ async function startServer() {
     });
   });
 
+  const clientToSocket = new Map<string, string>();
+  const socketToClient = new Map<string, string>();
+
   io.on("connection", (socket) => {
+    const authClientId = socket.handshake.auth && socket.handshake.auth.clientId;
+    const clientId = (authClientId && typeof authClientId === "string" && authClientId.trim())
+      ? authClientId.trim()
+      : socket.id;
+
+    clientToSocket.set(clientId, socket.id);
+    socketToClient.set(socket.id, clientId);
+
     const clientUsername =
       (socket.handshake.auth && socket.handshake.auth.username) ||
       "Player_" + Math.floor(100 + Math.random() * 900);
 
-    peers[socket.id] = { id: socket.id, username: clientUsername };
+    peers[clientId] = { id: clientId, username: clientUsername };
 
     // Assign bot host if none exists
     if (!botHostId) {
-      botHostId = socket.id;
+      botHostId = clientId;
     }
 
     // Send init packet
     socket.emit("init", {
-      id: socket.id,
+      id: clientId,
       roomState,
       peers,
-      isBotHost: botHostId === socket.id,
+      isBotHost: botHostId === clientId,
       sharedBots
     });
 
     // Notify peers
-    socket.broadcast.emit("peerJoined", peers[socket.id]);
+    socket.broadcast.emit("peerJoined", peers[clientId]);
     socket.emit("presence", presences);
 
     // Real-time presence updates (movement, angle, segments, etc.)
     socket.on("updatePresence", (data) => {
       if (!data) return;
-      data.id = socket.id;
-      data.name = peers[socket.id]?.username || data.name || "Player";
-      presences[socket.id] = data;
+      const prev = presences[clientId] || {};
+      const merged = {
+        ...prev,
+        ...data,
+        id: clientId,
+        name: peers[clientId]?.username || data.name || prev.name || "Player"
+      };
+      if (!data.segments && prev.segments) {
+        merged.segments = prev.segments;
+      }
+      presences[clientId] = merged;
 
       // Broadcast to other players
       socket.broadcast.emit("presence", presences);
@@ -365,18 +384,20 @@ async function startServer() {
     // Peer-to-peer / combat request (hits, ink clouds, etc.)
     socket.on("requestPresenceUpdate", (data) => {
       if (!data || !data.targetId) return;
-      io.to(data.targetId).emit("presenceUpdateRequest", {
+      const targetSocketId = clientToSocket.get(data.targetId) || data.targetId;
+      io.to(targetSocketId).emit("presenceUpdateRequest", {
         updateRequest: data.updateRequest,
-        fromClientId: socket.id
+        fromClientId: clientId
       });
     });
 
     // Direct damage event for authoritative PvP
     socket.on("damagePlayer", (data) => {
       if (!data || !data.targetId) return;
-      io.to(data.targetId).emit("takeDamage", {
+      const targetSocketId = clientToSocket.get(data.targetId) || data.targetId;
+      io.to(targetSocketId).emit("takeDamage", {
         ...data,
-        attackerId: socket.id
+        attackerId: clientId
       });
     });
 
@@ -388,20 +409,20 @@ async function startServer() {
 
       // Verify uniqueness against other peers
       const taken = Object.values(peers).some(
-        (p) => p.id !== socket.id && p.username.toLowerCase() === clean.toLowerCase()
+        (p) => p.id !== clientId && p.username.toLowerCase() === clean.toLowerCase()
       );
       if (taken) {
         let suffix = Math.floor(10 + Math.random() * 90);
         clean = `${clean.substring(0, 13)}_${suffix}`;
       }
 
-      peers[socket.id] = { id: socket.id, username: clean };
-      if (presences[socket.id]) {
-        presences[socket.id].name = clean;
+      peers[clientId] = { id: clientId, username: clean };
+      if (presences[clientId]) {
+        presences[clientId].name = clean;
       }
 
       socket.emit("usernameConfirmed", { username: clean });
-      io.emit("peerJoined", peers[socket.id]);
+      io.emit("peerJoined", peers[clientId]);
       socket.broadcast.emit("presence", presences);
     });
 
@@ -443,7 +464,7 @@ async function startServer() {
 
     // Bot synchronization from the designated bot host
     socket.on("syncBots", (botsData) => {
-      if (socket.id === botHostId && botsData) {
+      if (clientId === botHostId && botsData) {
         sharedBots = botsData;
         socket.broadcast.emit("botPresences", botsData);
       }
@@ -463,19 +484,24 @@ async function startServer() {
     });
 
     socket.on("disconnect", () => {
-      delete peers[socket.id];
-      delete presences[socket.id];
+      delete peers[clientId];
+      delete presences[clientId];
+      clientToSocket.delete(clientId);
+      socketToClient.delete(socket.id);
 
       // Reassign bot host if the host disconnected
-      if (botHostId === socket.id) {
-        const remainingSockets = Object.keys(peers);
-        botHostId = remainingSockets.length > 0 ? remainingSockets[0] : null;
+      if (botHostId === clientId) {
+        const remainingClients = Object.keys(peers);
+        botHostId = remainingClients.length > 0 ? remainingClients[0] : null;
         if (botHostId) {
-          io.to(botHostId).emit("botHost", { isHost: true });
+          const newHostSocket = clientToSocket.get(botHostId);
+          if (newHostSocket) {
+            io.to(newHostSocket).emit("botHost", { isHost: true });
+          }
         }
       }
 
-      socket.broadcast.emit("peerLeft", socket.id);
+      socket.broadcast.emit("peerLeft", clientId);
       socket.broadcast.emit("presence", presences);
     });
   });

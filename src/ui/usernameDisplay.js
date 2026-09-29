@@ -4,16 +4,26 @@ export class UsernameDisplay {
     }
     
     getPlayerName(clientId) {
-        // First check if this is a real player
-        if (this.game.room.peers[clientId]) {
-            return this.game.room.peers[clientId].username || "Unknown";
+        if (!clientId) return "Player";
+
+        // Check if username is in peers
+        if (this.game.room?.peers?.[clientId]?.username) {
+            return this.game.room.peers[clientId].username;
         }
-        
-        // Check if this is an AI player
-        if (clientId.startsWith('ai-') && 
-            this.game.playerPresences[clientId] && 
-            this.game.playerPresences[clientId].name) {
+
+        // Check presence name
+        if (this.game.playerPresences?.[clientId]?.name && this.game.playerPresences[clientId].name !== "Unknown") {
             return this.game.playerPresences[clientId].name;
+        }
+
+        // Check interpolated presence name
+        if (this.game.interpolatedPresences?.[clientId]?.name && this.game.interpolatedPresences[clientId].name !== "Unknown") {
+            return this.game.interpolatedPresences[clientId].name;
+        }
+
+        // Check players object
+        if (this.game.players?.[clientId]?.name && this.game.players[clientId].name !== "Unknown") {
+            return this.game.players[clientId].name;
         }
         
         // Fallback

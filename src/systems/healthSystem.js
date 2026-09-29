@@ -24,8 +24,9 @@ export class HealthSystem {
             creature.health = Math.min(CONFIG.MAX_HEALTH, creature.health + regenAmount);
             
             // Sync updated health
-            if (this.game.room) {
+            if (this.game.room && creature) {
                 this.game.room.updatePresence({
+                    ...creature.getPresenceData(),
                     health: creature.health
                 });
             }
@@ -104,8 +105,9 @@ export class HealthSystem {
             return true; // Player died
         } else {
             // Update presence with new health value
-            if (this.game.room) {
+            if (this.game.room && creature) {
                 this.game.room.updatePresence({
+                    ...creature.getPresenceData(),
                     health: creature.health
                 });
             }

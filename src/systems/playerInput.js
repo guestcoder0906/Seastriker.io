@@ -80,6 +80,7 @@ export class PlayerInput {
             if (success) {
                 // Update presence with proper CONFIG reference
                 this.game.room.updatePresence({
+                    ...this.game.creature.getPresenceData(),
                     isCamouflaged: true,
                     camouflageReady: false,
                     camouflageActiveTimer: CONFIG.OCTOPUS_CAMOUFLAGE_DURATION,

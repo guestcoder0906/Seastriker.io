@@ -203,20 +203,27 @@ class NarwhaleGame {
         
         for (const clientId in this.playerPresences) {
             const presence = this.playerPresences[clientId];
+            const peerName = this.room.peers[clientId]?.username;
+            const effectiveName = peerName || presence.name || (clientId.startsWith('ai-') ? presence.name : "Player");
             
             if (!this.players[clientId] && presence.isAlive) {
                 this.players[clientId] = {
                     id: clientId,
-                    name: this.room.peers[clientId]?.username || 
-                          (clientId.startsWith('ai-') ? presence.name : "Unknown"),
+                    name: effectiveName,
+                    type: presence.type || 'narwhal',
+                    skinId: presence.skinId || 'default',
                     segments: presence.segments,
                     color: presence.color,
                     isDashing: presence.isDashing,
                     isAlive: presence.isAlive,
-                    kills: presence.kills
+                    kills: presence.kills || 0
                 };
             } 
             else if (this.players[clientId]) {
+                if (effectiveName) this.players[clientId].name = effectiveName;
+                if (presence.type) this.players[clientId].type = presence.type;
+                if (presence.skinId) this.players[clientId].skinId = presence.skinId;
+                if (presence.color) this.players[clientId].color = presence.color;
                 this.players[clientId].segments = presence.segments;
                 this.players[clientId].isDashing = presence.isDashing;
                 this.players[clientId].isAlive = presence.isAlive;
@@ -358,6 +365,7 @@ class NarwhaleGame {
                     }
                 }
             }
+            validIds.add(clientId);
         }
 
         // Clean up disconnected players

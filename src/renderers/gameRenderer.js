@@ -397,16 +397,19 @@ export class GameRenderer {
             return;
         }
         
-        if (creature.type === 'narwhal') {
+        const type = creature.type || 'narwhal';
+        if (type === 'narwhal') {
             this.drawNarwhal(ctx, creature, isLocalPlayer);
-        } else if (creature.type === 'dolphin') {
+        } else if (type === 'dolphin') {
             this.dolphinRenderer.drawDolphin(ctx, creature, isLocalPlayer);
-        } else if (creature.type === 'shark') {
+        } else if (type === 'shark') {
             this.game.sharkRenderer.drawShark(ctx, creature, isLocalPlayer);
-        } else if (creature.type === 'squid') {
+        } else if (type === 'squid') {
             this.squidRenderer.drawSquid(ctx, creature, isLocalPlayer);
-        } else if (creature.type === 'knifefish') {
+        } else if (type === 'knifefish') {
             this.knifeFishRenderer.drawKnifeFish(ctx, creature, isLocalPlayer);
+        } else {
+            this.drawNarwhal(ctx, creature, isLocalPlayer);
         }
     }
 
@@ -603,7 +606,8 @@ export class GameRenderer {
                 ctx.font = '12px Arial';
                 ctx.fillStyle = 'white';
                 ctx.textAlign = 'center';
-                ctx.fillText(narwhal.name, headX, headY - CONFIG.SEGMENT_SIZE - 10);
+                const displayName = narwhal.name || (this.game.usernameDisplay ? this.game.usernameDisplay.getPlayerName(narwhal.id) : "Player");
+                ctx.fillText(displayName, headX, headY - CONFIG.SEGMENT_SIZE - 10);
                 
                 // Draw kills
                 if (narwhal.kills > 0) {
