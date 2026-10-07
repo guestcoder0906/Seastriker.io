@@ -15,13 +15,14 @@ export class HealthSystem {
         const isKnifeFish = creature.type === 'knifefish';
         const regenDelay = isKnifeFish ? (CONFIG.KNIFEFISH_REGEN_DELAY || 1500) : 3000;
         const now = performance.now();
-        if (creature.health < CONFIG.MAX_HEALTH && (now - this.lastDamageTime > regenDelay)) {
+        const maxHealth = creature.maxHealth || (creature.type === 'dolphin' ? (CONFIG.DOLPHIN_MAX_HEALTH || 120) : CONFIG.MAX_HEALTH);
+        if (creature.health < maxHealth && (now - this.lastDamageTime > regenDelay)) {
             const baseRegen = CONFIG.HEALTH_REGEN_RATE || 0.14;
             const modifier = (typeof creature.healthRegenModifier === 'number' && creature.healthRegenModifier > 0)
                 ? creature.healthRegenModifier
                 : (isKnifeFish ? (CONFIG.KNIFEFISH_HEALTH_REGEN_MULTIPLIER || 1.85) : 1.0);
             const regenAmount = baseRegen * modifier;
-            creature.health = Math.min(CONFIG.MAX_HEALTH, creature.health + regenAmount);
+            creature.health = Math.min(maxHealth, creature.health + regenAmount);
             
             // Sync updated health
             if (this.game.room && creature) {
@@ -134,7 +135,7 @@ export class HealthSystem {
         ctx.fillRect(x - width / 2, y, width, height);
         
         // Health amount clamped [0, 1]
-        const maxHealth = CONFIG.MAX_HEALTH || 100;
+        const maxHealth = creature.maxHealth || (creature.type === 'dolphin' ? (CONFIG.DOLPHIN_MAX_HEALTH || 120) : (CONFIG.MAX_HEALTH || 100));
         const healthVal = typeof creature.health === 'number' ? creature.health : maxHealth;
         const healthPercentage = Math.max(0, Math.min(1, healthVal / maxHealth));
         

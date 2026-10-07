@@ -85,8 +85,9 @@ export class AIHealthSystem {
 
             if (aiPlayer && aiPlayer.creature && aiPlayer.creature.isAlive) {
                 const narwhal = aiPlayer.creature;
+                const maxHealth = narwhal.maxHealth || (narwhal.type === 'dolphin' ? (CONFIG.DOLPHIN_MAX_HEALTH || 120) : CONFIG.MAX_HEALTH);
 
-                if (narwhal.health < CONFIG.MAX_HEALTH) {
+                if (narwhal.health < maxHealth) {
                     const isKnifeFish = narwhal.type === 'knifefish';
                     const baseRegen = CONFIG.HEALTH_REGEN_RATE || 0.14;
                     const modifier = (typeof narwhal.healthRegenModifier === 'number' && narwhal.healthRegenModifier > 0)
@@ -95,7 +96,7 @@ export class AIHealthSystem {
                     const regenAmount = baseRegen * modifier;
 
                     narwhal.health = Math.min(
-                        CONFIG.MAX_HEALTH,
+                        maxHealth,
                         narwhal.health + regenAmount
                     );
 

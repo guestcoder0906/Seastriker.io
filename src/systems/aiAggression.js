@@ -41,10 +41,11 @@ export class AIAggression {
             if (distance > ai.sightRange) continue;
             
             // Prioritize players with lower health or closer distance
-            const health = presence.health || CONFIG.MAX_HEALTH;
+            const targetMaxHealth = presence.maxHealth || (presence.type === 'dolphin' ? (CONFIG.DOLPHIN_MAX_HEALTH || 120) : CONFIG.MAX_HEALTH);
+            const health = typeof presence.health === 'number' ? presence.health : targetMaxHealth;
             
             // Weighted scoring: prioritize low health and close distance
-            const score = (health / CONFIG.MAX_HEALTH) * 0.4 + (distance / ai.sightRange) * 0.6;
+            const score = (health / targetMaxHealth) * 0.4 + (distance / ai.sightRange) * 0.6;
             
             if (bestTarget === null || score < closestDistance) {
                 bestTarget = clientId;

@@ -5,7 +5,9 @@ export class Dolphin extends Creature {
     constructor(id, x, y, color, name) {
         super(id, x, y, color, name, 'dolphin');
         
-        // Dolphin specific stats: slightly faster than narwhal, turns more easily
+        // Dolphin specific stats: slightly faster than narwhal, turns more easily, slightly more max health
+        this.maxHealth = CONFIG.DOLPHIN_MAX_HEALTH || 120;
+        this.health = this.maxHealth;
         this.speed = CONFIG.BASE_SPEED * (CONFIG.DOLPHIN_SPEED_MULTIPLIER || 1.12);
         this.turnSpeed = CONFIG.DOLPHIN_TURN_FACTOR || 0.16;
         this.sightRange = CONFIG.AI_SIGHT_RANGE * (CONFIG.DOLPHIN_VISION_MULTIPLIER || 1.35);
@@ -466,6 +468,7 @@ export class Dolphin extends Creature {
         return {
             ...base,
             type: 'dolphin',
+            maxHealth: this.maxHealth || (CONFIG.DOLPHIN_MAX_HEALTH || 120),
             stamina: this.stamina,
             isFastSwimming: this.isFastSwimming,
             tailSnapState: this.tailSnapState,

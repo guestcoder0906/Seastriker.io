@@ -75,6 +75,7 @@ export const CONFIG = {
     HAMMERHEAD_ATTACK_RANGE_MULTIPLIER: 1.3, // 30% wider attack range
 
     // Dolphin settings (Replaced kabob narwhal)
+    DOLPHIN_MAX_HEALTH: 120,             // Slightly higher max health (120 vs default 100)
     DOLPHIN_SIZE_MULTIPLIER: 1.15,       // Slightly bigger size
     DOLPHIN_SPEED_MULTIPLIER: 1.10,      // Slightly faster than narwhal
     DOLPHIN_TURN_FACTOR: 0.14,           // Smooth turning
