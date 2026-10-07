@@ -7,7 +7,7 @@ export class KnifeFish extends Creature {
         
         // KnifeFish-specific properties
         this.speed = CONFIG.BASE_SPEED * CONFIG.KNIFEFISH_SPEED_MULTIPLIER;
-        this.healthRegenModifier = CONFIG.KNIFEFISH_HEALTH_REGEN_MULTIPLIER || 1.4;
+        this.healthRegenModifier = CONFIG.KNIFEFISH_HEALTH_REGEN_MULTIPLIER || 1.85;
         this.bodyHitbox = [];
         this.headHitbox = { x: 0, y: 0, radius: 0 };
         this.canSeeHidden = true; // Can see camouflaged creatures

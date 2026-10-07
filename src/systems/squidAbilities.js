@@ -93,11 +93,12 @@ export class SquidAbilities {
         let playerInTentacles = false;
         
         // Check all players against tentacle hitbox
-        for (const clientId in this.game.playerPresences) {
+        const presences = this.game.interpolatedPresences || this.game.playerPresences;
+        for (const clientId in presences) {
             // Skip self
             if (clientId === squid.id) continue;
             
-            const presence = this.game.playerPresences[clientId];
+            const presence = presences[clientId];
             if (!presence || !presence.isAlive || !presence.segments || !presence.segments[0]) continue;
             
             // Skip if target is protected inside coral reef

@@ -567,26 +567,27 @@ export class AIController {
         }
         
         // Check collisions based on AI creature type
+        const activePresences = this.game.interpolatedPresences || this.game.playerPresences;
         let collisionResult = null;
         if (ai.creature.type === 'narwhal') {
             collisionResult = this.game.narwhalCollisions.checkTuskNarwhalCollisions(
                 ai.creature, 
-                this.game.playerPresences
+                activePresences
             );
         } else if (ai.creature.type === 'dolphin') {
-            collisionResult = ai.creature.checkDolphinCollisions(this.game.playerPresences);
+            collisionResult = ai.creature.checkDolphinCollisions(activePresences);
         } else if (ai.creature.type === 'shark') {
-            collisionResult = ai.creature.checkSharkCollisions(this.game.playerPresences);
+            collisionResult = ai.creature.checkSharkCollisions(activePresences);
         } else if (ai.creature.type === 'knifefish') {
-            collisionResult = ai.creature.checkKnifeFishCollisions(this.game.playerPresences);
+            collisionResult = ai.creature.checkKnifeFishCollisions(activePresences);
         } else if (ai.creature.type === 'squid') {
-            collisionResult = this.checkSquidAICollisions(ai.creature, this.game.playerPresences);
+            collisionResult = this.checkSquidAICollisions(ai.creature, activePresences);
         }
         
         if (collisionResult && typeof collisionResult === 'object') {
             // Process collision result
             const targetId = collisionResult.clientId;
-            const targetPresence = this.game.playerPresences[targetId];
+            const targetPresence = activePresences[targetId];
 
             // Creatures hiding inside coral reefs cannot be attacked since they are protected
             if (targetPresence && (targetPresence.isHiddenInReef || (this.game.coralReefSystem && this.game.coralReefSystem.isCreatureProtectedInReef(targetPresence)))) {

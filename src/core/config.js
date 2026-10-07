@@ -170,6 +170,6 @@ export const CONFIG = {
     KNIFEFISH_MINIMUM_IMPACT_VELOCITY: 2, // Lower minimum velocity for damage
     KNIFEFISH_AI_CHANCE: 0.25,            // 25% chance for AI knife fish
     KNIFEFISH_DODGE_DURATION: 450,        // 50% longer dodge duration than narwhal's 300ms
-    KNIFEFISH_HEALTH_REGEN_MULTIPLIER: 1.4, // Knife fish regenerates health 40% faster than others
-    KNIFEFISH_REGEN_DELAY: 2200,          // Begins regenerating health after 2.2s of no damage (vs 3.0s for others)
+    KNIFEFISH_HEALTH_REGEN_MULTIPLIER: 1.85, // Knife fish regenerates health 85% faster to balance lower max HP
+    KNIFEFISH_REGEN_DELAY: 1500,          // Begins regenerating health after 1.5s of no damage (rapid recovery)
 };

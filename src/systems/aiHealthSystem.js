@@ -91,7 +91,7 @@ export class AIHealthSystem {
                     const baseRegen = CONFIG.HEALTH_REGEN_RATE || 0.14;
                     const modifier = (typeof narwhal.healthRegenModifier === 'number' && narwhal.healthRegenModifier > 0)
                         ? narwhal.healthRegenModifier
-                        : (isKnifeFish ? (CONFIG.KNIFEFISH_HEALTH_REGEN_MULTIPLIER || 1.4) : 1.0);
+                        : (isKnifeFish ? (CONFIG.KNIFEFISH_HEALTH_REGEN_MULTIPLIER || 1.85) : 1.0);
                     const regenAmount = baseRegen * modifier;
 
                     narwhal.health = Math.min(

@@ -183,16 +183,21 @@ class NarwhaleGame {
     handlePresenceUpdate(presences) {
         const myClientId = this.room?.clientId;
         const myCreatureId = this.creature?.id;
-        const realPlayerPresences = {};
+        if (!this.playerPresences) this.playerPresences = {};
+
+        // Merge incoming remote presences without wiping out active players
         for (const [id, pres] of Object.entries(presences || {})) {
             // Only accept real alive network players; skip AI (local), self, and dead players
             if (!id.startsWith('ai-') && id !== myClientId && id !== myCreatureId) {
                 if (pres && pres.isAlive !== false && (typeof pres.health !== 'number' || pres.health > 0) && pres.segments && pres.segments.length > 0) {
-                    realPlayerPresences[id] = pres;
+                    this.playerPresences[id] = pres;
+                } else {
+                    delete this.playerPresences[id];
+                    if (this.interpolatedPresences) delete this.interpolatedPresences[id];
+                    delete this.players[id];
                 }
             }
         }
-        this.playerPresences = realPlayerPresences;
         
         if (this.gameActive && this.creature && this.creature.isAlive && (typeof this.creature.health !== 'number' || this.creature.health > 0)) {
             this.playerPresences[this.room.clientId] = this.creature.getPresenceData();
@@ -253,8 +258,8 @@ class NarwhaleGame {
         }
 
         const validIds = new Set();
-        // Frame-rate independent smoothing
-        const lerpFactor = Math.min(1.0, 1.0 - Math.exp(-22 * Math.min(deltaTime, 0.1)));
+        // Optimal damping factor for responsive, butter-smooth remote player interpolation
+        const lerpFactor = Math.min(1.0, 1.0 - Math.exp(-26 * Math.min(deltaTime, 0.1)));
 
         const normalizeAngle = (a) => {
             if (!Number.isFinite(a)) return 0;
@@ -303,7 +308,7 @@ class NarwhaleGame {
                 continue;
             }
 
-            // Remote real players: smooth interpolation between incoming network packets
+            // Remote real players: smooth interpolation and velocity-based dead-reckoning between network packets
             if (!this.interpolatedPresences[clientId]) {
                 this.interpolatedPresences[clientId] = {
                     ...target,
@@ -340,7 +345,7 @@ class NarwhaleGame {
                     current.rotationAngle = lerpAngle(current.rotationAngle ?? target.rotationAngle, target.rotationAngle, lerpFactor);
                 }
 
-                // Smoothly lerp segments
+                // Smoothly lerp segments with velocity dead-reckoning
                 if (Array.isArray(target.segments) && target.segments.length > 0) {
                     if (!Array.isArray(current.segments) || current.segments.length !== target.segments.length) {
                         current.segments = target.segments.map(s => ({ ...s }));
@@ -348,7 +353,7 @@ class NarwhaleGame {
                         const headDistSq = (target.segments[0].x - current.segments[0].x) ** 2 + 
                                            (target.segments[0].y - current.segments[0].y) ** 2;
                         
-                        if (headDistSq > 400 * 400) {
+                        if (headDistSq > 350 * 350) {
                             // Snap immediately on large jump / spawn / teleport
                             for (let i = 0; i < target.segments.length; i++) {
                                 current.segments[i].x = target.segments[i].x;
@@ -357,7 +362,20 @@ class NarwhaleGame {
                                 current.segments[i].scale = target.segments[i].scale;
                             }
                         } else {
-                            for (let i = 0; i < target.segments.length; i++) {
+                            // Apply velocity extrapolation to target head to eliminate inter-packet stepping
+                            const vx = (target.velocity && typeof target.velocity.x === 'number') ? target.velocity.x : 0;
+                            const vy = (target.velocity && typeof target.velocity.y === 'number') ? target.velocity.y : 0;
+                            
+                            // Head interpolation
+                            const targetHeadX = target.segments[0].x + vx * 0.25;
+                            const targetHeadY = target.segments[0].y + vy * 0.25;
+                            current.segments[0].x += (targetHeadX - current.segments[0].x) * lerpFactor;
+                            current.segments[0].y += (targetHeadY - current.segments[0].y) * lerpFactor;
+                            current.segments[0].angle = lerpAngle(current.segments[0].angle, target.segments[0].angle, lerpFactor);
+                            current.segments[0].scale = target.segments[0].scale;
+
+                            // Body segments smooth following
+                            for (let i = 1; i < target.segments.length; i++) {
                                 const tgtSeg = target.segments[i];
                                 const curSeg = current.segments[i];
                                 curSeg.x += (tgtSeg.x - curSeg.x) * lerpFactor;

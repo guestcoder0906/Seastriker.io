@@ -4,10 +4,25 @@ export class PlayerController {
     constructor(game) {
         this.game = game;
         this.recentCollisions = {};
+        this._processedCombatPacketIds = new Set();
     }
 
     handleCollisionRequest(updateRequest, fromClientId) {
         if (!this.game.creature || !this.game.creature.isAlive) return;
+
+        // Deduplicate combat packets across multi-channel broadcasts (Socket.IO, BroadcastChannel, Supabase)
+        if (updateRequest.packetId) {
+            if (this._processedCombatPacketIds.has(updateRequest.packetId)) {
+                return; // Already processed this combat packet
+            }
+            this._processedCombatPacketIds.add(updateRequest.packetId);
+            if (this._processedCombatPacketIds.size > 200) {
+                const firstItems = Array.from(this._processedCombatPacketIds).slice(0, 100);
+                for (const item of firstItems) {
+                    this._processedCombatPacketIds.delete(item);
+                }
+            }
+        }
 
         // While octopus is camouflaged, attacks/damage done to it only happen 50% of the time
         if (updateRequest.type === 'collision' || updateRequest.type === 'bodyHit' || updateRequest.type === 'tentacleHit') {
@@ -153,9 +168,10 @@ export class PlayerController {
     }
     
     checkNarwhalCollisions() {
+        const activePresences = this.game.interpolatedPresences || this.game.playerPresences;
         const collisionResult = this.game.narwhalCollisions.checkTuskNarwhalCollisions(
             this.game.creature, 
-            this.game.playerPresences
+            activePresences
         );
         
         if (collisionResult) {
@@ -164,7 +180,7 @@ export class PlayerController {
                 return;
             }
             
-            const targetPresence = this.game.playerPresences[clientId];
+            const targetPresence = activePresences[clientId];
             if (!targetPresence || targetPresence.isAlive === false || (typeof targetPresence.health === 'number' && targetPresence.health <= 0) || (targetPresence.isHiddenInReef || (this.game.coralReefSystem && this.game.coralReefSystem.isCreatureProtectedInReef(targetPresence)))) {
                 return;
             }
@@ -215,7 +231,8 @@ export class PlayerController {
     }
     
     checkSharkCollisions() {
-        const collisionResult = this.game.creature.checkSharkCollisions(this.game.playerPresences);
+        const activePresences = this.game.interpolatedPresences || this.game.playerPresences;
+        const collisionResult = this.game.creature.checkSharkCollisions(activePresences);
         
         if (collisionResult && typeof collisionResult === 'object') {
             const clientId = collisionResult.clientId;
@@ -223,7 +240,7 @@ export class PlayerController {
                 return;
             }
             
-            const targetPresence = this.game.playerPresences[clientId];
+            const targetPresence = activePresences[clientId];
             if (!targetPresence || targetPresence.isAlive === false || (typeof targetPresence.health === 'number' && targetPresence.health <= 0) || (targetPresence.isHiddenInReef || (this.game.coralReefSystem && this.game.coralReefSystem.isCreatureProtectedInReef(targetPresence)))) {
                 return;
             }
@@ -262,7 +279,8 @@ export class PlayerController {
     }
     
     checkKnifeFishCollisions() {
-        const collisionResult = this.game.creature.checkKnifeFishCollisions(this.game.playerPresences);
+        const activePresences = this.game.interpolatedPresences || this.game.playerPresences;
+        const collisionResult = this.game.creature.checkKnifeFishCollisions(activePresences);
         
         if (collisionResult && typeof collisionResult === 'object') {
             const clientId = collisionResult.clientId;
@@ -270,7 +288,7 @@ export class PlayerController {
                 return;
             }
             
-            const targetPresence = this.game.playerPresences[clientId];
+            const targetPresence = activePresences[clientId];
             if (!targetPresence || targetPresence.isAlive === false || (typeof targetPresence.health === 'number' && targetPresence.health <= 0) || (targetPresence.isHiddenInReef || (this.game.coralReefSystem && this.game.coralReefSystem.isCreatureProtectedInReef(targetPresence)))) {
                 return;
             }
@@ -310,14 +328,15 @@ export class PlayerController {
 
     checkDolphinCollisions() {
         if (!this.game.creature.checkDolphinCollisions) return;
-        const collisionResult = this.game.creature.checkDolphinCollisions(this.game.playerPresences);
+        const activePresences = this.game.interpolatedPresences || this.game.playerPresences;
+        const collisionResult = this.game.creature.checkDolphinCollisions(activePresences);
         
         if (collisionResult && typeof collisionResult === 'object') {
             const clientId = collisionResult.clientId;
             if (clientId === this.game.room?.clientId || (this.game.creature && clientId === this.game.creature.id)) {
                 return;
             }
-            const targetPresence = this.game.playerPresences[clientId];
+            const targetPresence = activePresences[clientId];
             if (!targetPresence || targetPresence.isAlive === false || (typeof targetPresence.health === 'number' && targetPresence.health <= 0) || (targetPresence.isHiddenInReef || (this.game.coralReefSystem && this.game.coralReefSystem.isCreatureProtectedInReef(targetPresence)))) {
                 return;
             }
@@ -373,12 +392,13 @@ export class PlayerController {
         const now = performance.now();
         const head = squid.segments[0];
         const headRadius = (head.scale || 1.0) * CONFIG.SEGMENT_SIZE * 0.8;
+        const activePresences = this.game.interpolatedPresences || this.game.playerPresences;
 
-        for (const clientId in this.game.playerPresences) {
+        for (const clientId in activePresences) {
             if (clientId === squid.id) continue;
             if (this.recentCollisions[clientId] && (now - this.recentCollisions[clientId] < (CONFIG.COLLISION_COOLDOWN || 1000))) continue;
 
-            const target = this.game.playerPresences[clientId];
+            const target = activePresences[clientId];
             if (!target || target.isAlive === false || (typeof target.health === 'number' && target.health <= 0) || !target.segments || target.segments.length === 0) continue;
             if (target.isHiddenInReef || (this.game.coralReefSystem && this.game.coralReefSystem.isCreatureProtectedInReef(target))) continue;
 

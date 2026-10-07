@@ -44,11 +44,16 @@ export class MultiplayerManager {
         this.supabase.subscribePresence((remotePresences) => {
             if (this.gameMode === 'multiplayer') {
                 const activeRemoteIds = new Set(Object.keys(remotePresences || {}));
-                // Prune presences that are no longer reported by Supabase
+                const now = performance.now();
+                // Prune presences that are definitively gone
                 for (const id in this.localPresences) {
                     if (id !== this.clientId && !id.startsWith('ai-') && !activeRemoteIds.has(id) && (!this.socket || !this.socket.connected)) {
-                        delete this.localPresences[id];
-                        delete this.peers[id];
+                        const existing = this.localPresences[id];
+                        // Give a 4.5 second grace window before purging to prevent packet jitter flicker
+                        if (!existing || !existing.lastSeen || (now - existing.lastSeen > 4500)) {
+                            delete this.localPresences[id];
+                            delete this.peers[id];
+                        }
                     }
                 }
                 for (const [key, pres] of Object.entries(remotePresences || {})) {
@@ -57,6 +62,7 @@ export class MultiplayerManager {
                             delete this.localPresences[key];
                             delete this.peers[key];
                         } else {
+                            pres.lastSeen = now;
                             this.localPresences[key] = pres;
                             if (pres.name) {
                                 this.peers[key] = { id: key, username: pres.name };
