@@ -75,14 +75,13 @@ export const CONFIG = {
     HAMMERHEAD_ATTACK_RANGE_MULTIPLIER: 1.3, // 30% wider attack range
 
     // Dolphin settings (Replaced kabob narwhal)
-    DOLPHIN_MAX_HEALTH: 120,             // Slightly higher max health (120 vs default 100)
     DOLPHIN_SIZE_MULTIPLIER: 1.15,       // Slightly bigger size
     DOLPHIN_SPEED_MULTIPLIER: 1.10,      // Slightly faster than narwhal
     DOLPHIN_TURN_FACTOR: 0.14,           // Smooth turning
     DOLPHIN_VISION_MULTIPLIER: 1.35,     // Slightly bigger range of sight like hammerhead shark
-    DOLPHIN_RAM_DAMAGE: 16,              // Ramming deals slightly less damage (lowered from 20)
-    DOLPHIN_HEAD_DAMAGE: 20,             // Direct head-on ram (lowered from 25)
-    DOLPHIN_HIGH_SPEED_RAM_DAMAGE: 45,   // Lethal dash ram damage (lowered from 60)
+    DOLPHIN_RAM_DAMAGE: 20,              // Ramming deals slightly less damage (lowered from 20)
+    DOLPHIN_HEAD_DAMAGE: 24,             // Direct head-on ram (lowered from 25)
+    DOLPHIN_HIGH_SPEED_RAM_DAMAGE: 50,   // Lethal dash ram damage (lowered from 60)
     DOLPHIN_TAIL_SNAP_DAMAGE: 8,         // Dolphin tail attack deals slightly less damage (lowered from 11)
     DOLPHIN_TURN_SNAP_THRESHOLD: 0.11,   // Turning threshold to trigger tail snap (larger so it happens less often)
     DOLPHIN_AI_CHANCE: 0.25,             // 25% chance for AI to be dolphin

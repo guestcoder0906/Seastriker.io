@@ -27,8 +27,7 @@ export class Creature {
         this.fastSwimPhase = 0;
         this.kills = 0;
         this.isAlive = true;
-        this.maxHealth = (type === 'dolphin') ? (CONFIG.DOLPHIN_MAX_HEALTH || 120) : CONFIG.MAX_HEALTH;
-        this.health = this.maxHealth;
+        this.health = CONFIG.MAX_HEALTH;
         this.type = type; // 'narwhal' or 'shark' or 'squid'
         this.healthRegenModifier = (type === 'knifefish') ? (CONFIG.KNIFEFISH_HEALTH_REGEN_MULTIPLIER || 1.4) : 1.0;
         
@@ -118,8 +117,7 @@ export class Creature {
         this.staminaReady = true;
         this.staminaCooldown = 0;
         this.isAlive = true;
-        this.maxHealth = (this.type === 'dolphin') ? (CONFIG.DOLPHIN_MAX_HEALTH || 120) : CONFIG.MAX_HEALTH;
-        this.health = this.maxHealth;
+        this.health = CONFIG.MAX_HEALTH;
         this.kills = 0;
         
         // Reset ink ability state
@@ -178,7 +176,6 @@ export class Creature {
             kills: this.kills,
             isAlive: this.isAlive,
             health: this.health,
-            maxHealth: this.maxHealth || (this.type === 'dolphin' ? (CONFIG.DOLPHIN_MAX_HEALTH || 120) : CONFIG.MAX_HEALTH),
             upgrades: this.upgrades,
             tuskLengthModifier: this.tuskLengthModifier,
             staminaCooldownModifier: this.staminaCooldownModifier,
